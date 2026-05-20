@@ -31,6 +31,38 @@ Response: `200 OK` with formatted DOCX file as attachment.
 
 Interactive docs: `https://docx-formatter-api.onrender.com/docs`
 
+## Web App
+
+A drag & drop web interface for formatting documents:
+
+**Live demo:** (deploy via Vercel below)
+
+### Features
+- Drag & drop or click to upload template + content DOCX files
+- Real-time progress bar during processing
+- Configurable API URL (point to your Render backend)
+- Local history of formatted documents
+- Fully responsive design
+
+### Deploy Web App to Vercel (One-Click)
+
+1. Go to [vercel.com](https://vercel.com) and log in with GitHub account
+2. Click **"Add New..."** → **"Project"**
+3. Import `p-trom/docx-formatter` from GitHub
+4. Set **Root Directory** to `webapp`
+5. Framework preset: **Other** (static site)
+6. Click **Deploy** — będzie gotowe w ~30s
+
+Your webapp will be at: `https://docx-formatter-web.vercel.app`
+
+### Use Web App Locally
+
+```bash
+cd webapp
+python3 -m http.server 8080
+# Open http://localhost:8080
+```
+
 ## Architecture
 
 See `docs/architecture.md` for full technical specification.
@@ -91,6 +123,10 @@ docx-formatter/
 │       ├── api/           # FastAPI endpoints
 │       ├── workers/       # Celery background tasks
 │       └── utils/         # Shared utilities
+├── webapp/            # Frontend web application
+│   ├── index.html
+│   ├── styles.css
+│   └── app.js
 ├── tests/             # Test suite
 ├── docs/              # Architecture & documentation
 ├── docker/            # Docker configurations
