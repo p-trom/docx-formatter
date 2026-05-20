@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DOCX Formatter</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">
+                <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+                    <rect width="32" height="32" rx="8" fill="#2563eb"/>
+                    <path d="M10 8h8l6 6v10a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z" stroke="white" stroke-width="2" fill="none"/>
+                    <path d="M18 8v6h6" stroke="white" stroke-width="2" fill="none"/>
+                    <line x1="12" y1="18" x2="20" y2="18" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                    <line x1="12" y1="22" x2="17" y2="22" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                <h1>DOCX Formatter</h1>
+            </div>
+            <p class="subtitle">Upload a template with styles and a raw content file. Get a professionally formatted DOCX.</p>
+        </header>
+
+        <main>
+            <div class="upload-section">
+                <div class="upload-grid">
+                    <!-- Template Upload -->
+                    <div class="upload-box" id="templateDropZone">
+                        <input type="file" id="templateInput" accept=".docx" hidden>
+                        <div class="upload-content">
+                            <div class="upload-icon">
+                                <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                                    <circle cx="24" cy="24" r="20" stroke="#2563eb" stroke-width="2" fill="#eff6ff"/>
+                                    <path d="M24 16v16m-6-6l6-6 6 6" stroke="#2563eb" stroke-width="2" stroke-linecap="round"/>
+                                </svg>
+                            </div>
+                            <h3>Drop template here</h3>
+                            <p class="upload-hint">or <span class="link">click to browse</span></p>
+                            <p class="file-type">.docx files only</p>
+                        </div>
+                        <div class="file-preview hidden" id="templatePreview">
+                            <div class="file-icon">📄</div>
+                            <div class="file-info">
+                                <p class="file-name" id="templateFileName"></p>
+                                <p class="file-size" id="templateFileSize"></p>
+                            </div>
+                            <button class="remove-btn" id="removeTemplate" title="Remove file">×</button>
+                        </div>
+                    </div>
+
+                    <!-- Content Upload -->
+                    <div class="upload-box" id="contentDropZone">
+                        <input type="file" id="contentInput" accept=".docx" hidden>
+                        <div class="upload-content">
+                            <div class="upload-icon">
+                                <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                                    <circle cx="24" cy="24" r="20" stroke="#059669" stroke-width="2" fill="#ecfdf5"/>
+                                    <path d="M24 16v16m-6-6l6-6 6 6" stroke="#059669" stroke-width="2" stroke-linecap="round"/>
+                                </svg>
+                            </div>
+                            <h3>Drop content here</h3>
+                            <p class="upload-hint">or <span class="link">click to browse</span></p>
+                            <p class="file-type">.docx files only</p>
+                        </div>
+                        <div class="file-preview hidden" id="contentPreview">
+                            <div class="file-icon">📝</div>
+                            <div class="file-info">
+                                <p class="file-name" id="contentFileName"></p>
+                                <p class="file-size" id="contentFileSize"></p>
+                            </div>
+                            <button class="remove-btn" id="removeContent" title="Remove file">×</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Output filename -->
+                <div class="output-filename">
+                    <label for="outputName">Output filename (optional)</label>
+                    <input type="text" id="outputName" placeholder="formatted.docx" value="formatted.docx">
+                </div>
+
+                <!-- API URL -->
+                <div class="api-config">
+                    <label for="apiUrl">API URL</label>
+                    <input type="url" id="apiUrl" value="https://docx-formatter-api.onrender.com" placeholder="https://your-api.com">
+                </div>
+
+                <!-- Submit Button -->
+                <button class="submit-btn" id="submitBtn" disabled>
+                    <span class="btn-text">Format Document</span>
+                    <span class="btn-spinner hidden"></span>
+                </button>
+
+                <!-- Progress -->
+                <div class="progress hidden" id="progressSection">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <p class="progress-text" id="progressText">Uploading...</p>
+                </div>
+
+                <!-- Error -->
+                <div class="error hidden" id="errorSection">
+                    <div class="error-icon">⚠️</div>
+                    <p class="error-message" id="errorMessage"></p>
+                </div>
+
+                <!-- Success -->
+                <div class="success hidden" id="successSection">
+                    <div class="success-icon">✅</div>
+                    <h3>Document formatted!</h3>
+                    <p class="success-details" id="successDetails"></p>
+                    <div class="success-actions">
+                        <a id="downloadLink" class="download-btn" download>Download File</a>
+                        <button class="reset-btn" id="resetBtn">Format Another</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- History -->
+            <div class="history-section" id="historySection">
+                <h3>Recent Formats</h3>
+                <div class="history-list" id="historyList">
+                    <p class="empty-history">No recent formats yet</p>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p>Powered by <a href="https://github.com/p-trom/docx-formatter" target="_blank">docx-formatter</a></p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
