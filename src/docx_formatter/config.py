@@ -9,6 +9,7 @@ class Settings(BaseSettings):
 
     app_name: str = "DOCX Formatter API"
     debug: bool = False
+    port: int = 8000
     max_file_size_mb: int = 16
     temp_dir: Path = Path("/tmp/docx_formatter")
     allowed_extensions: set[str] = {".docx"}

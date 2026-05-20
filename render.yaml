@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: docx-formatter-api
+    runtime: python
+    region: frankfurt
+    plan: free
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: bash start.sh
+    envVars:
+      - key: PYTHONPATH
+        value: src
+      - key: PORT
+        value: 8000
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: MAX_FILE_SIZE_MB
+        value: 16
+    healthCheckPath: /health
+    autoDeploy: true
