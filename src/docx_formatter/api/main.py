@@ -52,6 +52,18 @@ async def health_check():
     return {"status": "ok", "version": "0.1.0"}
 
 
+@app.get("/")
+async def root():
+    """Root redirect to API documentation."""
+    return {
+        "message": "DOCX Formatter API",
+        "version": "0.1.0",
+        "docs": "/docs",
+        "health": "/health",
+        "format": "POST /api/v1/format/template-upload",
+    }
+
+
 @app.exception_handler(Exception)
 async def general_exception_handler(request, exc):
     """Catch-all exception handler."""
