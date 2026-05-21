@@ -86,10 +86,6 @@ class DocumentAssembler:
             for table in content.tables:
                 self._add_table(doc, table, style_map, template)
 
-            # Restore section breaks if using template base
-            if template_docx_path:
-                self._restore_sections(doc)
-
             # If using legacy mode (no template path), copy headers/footers manually
             if not template_docx_path:
                 self._copy_headers_footers(doc, template)
@@ -110,104 +106,40 @@ class DocumentAssembler:
             result.success = False
 
         return result
-    
     def _clear_body_content(self, doc: Document) -> None:
         """Remove all paragraphs and tables from the document body while preserving
         section properties (headers, footers, page setup, background images).
 
-        DOCX section breaks can be embedded inside paragraph XML (<w:pPr><w:sectPr>).
-        We must extract sectPr elements before removing paragraphs, then re-apply them.
+        Strategy: Keep paragraphs that contain section breaks (clear their text but
+        preserve the <w:pPr><w:sectPr> structure). Remove all other paragraphs and
+        tables. This avoids deepcopy of XML which can corrupt lxml Element trees.
         """
         body = doc.element.body
+        preserved = 0
+        removed = 0
 
-        # Step 1: Extract all section properties while paragraphs still exist
-        # Section breaks are stored in paragraphs' pPr (not body sectPr for non-final sections)
-        section_data = []  # list of (insert_after_para_index or None, sectPr_xml)
-        para_count = 0
         for child in list(body):
             if child.tag == qn('w:p'):
                 # Check if this paragraph contains a section break
                 pPr = child.find(qn('w:pPr'))
+                has_sectPr = False
                 if pPr is not None:
-                    sectPr = pPr.find(qn('w:sectPr'))
-                    if sectPr is not None:
-                        # Deep copy the section properties XML
-                        section_data.append((para_count, copy.deepcopy(sectPr)))
-                para_count += 1
+                    has_sectPr = pPr.find(qn('w:sectPr')) is not None
+
+                if has_sectPr:
+                    # Preserve paragraph but clear all text content
+                    # Remove all <w:r> run elements
+                    for run in child.findall(qn('w:r')):
+                        child.remove(run)
+                    preserved += 1
+                else:
+                    body.remove(child)
+                    removed += 1
             elif child.tag == qn('w:tbl'):
-                pass  # no section breaks in tables
-
-        # Step 2: The final section properties are at the end of body
-        final_sectPr = body.find(qn('w:sectPr'))
-        if final_sectPr is not None:
-            section_data.append((None, copy.deepcopy(final_sectPr)))
-
-        # Step 3: Remove all paragraphs and tables from body
-        for child in list(body):
-            if child.tag in (qn('w:p'), qn('w:tbl')):
                 body.remove(child)
+                removed += 1
 
-        logger.info(f"Cleared body content; found {len(section_data)} section breaks to restore")
-
-        # Store section data for later restoration
-        self._pending_sections = section_data
-
-    def _restore_sections(self, doc: Document) -> None:
-        """Restore section breaks after content has been added.
-
-        Inserts section breaks at the correct positions within the new content.
-        The final section properties go at the end of the body.
-        """
-        if not hasattr(self, '_pending_sections') or not self._pending_sections:
-            return
-
-        body = doc.element.body
-        paragraphs = body.findall(qn('w:p'))
-        tables = body.findall(qn('w:tbl'))
-        # Count total content elements in order
-        content_elements = []
-        for child in body:
-            if child.tag in (qn('w:p'), qn('w:tbl')):
-                content_elements.append(child)
-
-        # Separate final section from inline sections
-        inline_sections = []
-        final_section = None
-        for idx, sectPr in self._pending_sections:
-            if idx is None:
-                final_section = sectPr
-            else:
-                inline_sections.append((idx, sectPr))
-
-        # Insert inline section breaks
-        total_elements = len(content_elements)
-        for orig_idx, sectPrXml in inline_sections:
-            # Map original paragraph index to current position
-            # We insert the section break at roughly proportional position
-            # or at the last paragraph if content is shorter
-            insert_pos = min(orig_idx, max(0, total_elements - 1))
-            if insert_pos < len(content_elements):
-                target_para = content_elements[insert_pos]
-                # Add sectPr to the paragraph's pPr
-                pPr = target_para.find(qn('w:pPr'))
-                if pPr is None:
-                    pPr = OxmlElement('w:pPr')
-                    target_para.insert(0, pPr)
-                # Remove any existing sectPr in this paragraph
-                existing = pPr.find(qn('w:sectPr'))
-                if existing is not None:
-                    pPr.remove(existing)
-                pPr.append(copy.deepcopy(sectPrXml))
-
-        # Replace final body sectPr
-        if final_section is not None:
-            existing_final = body.find(qn('w:sectPr'))
-            if existing_final is not None:
-                body.remove(existing_final)
-            body.append(copy.deepcopy(final_section))
-
-        self._pending_sections = []
-        logger.info("Restored section breaks, headers, footers, and page properties")
+        logger.info(f"Cleared body: removed {removed} elements, preserved {preserved} section-break paragraphs")
 
     def _ensure_template_styles(self, doc: Document, template: TemplateProfile) -> None:
         """Ensure all custom template styles exist in the base document.
