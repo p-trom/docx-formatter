@@ -115,8 +115,8 @@ class DOCXExtractor:
         profile = ContentProfile()
         
         # Extract paragraphs
-        for para in doc.paragraphs:
-            para_content = self._extract_paragraph(para)
+        for i, para in enumerate(doc.paragraphs):
+            para_content = self._extract_paragraph(para, para_index=i, total_paras=len(doc.paragraphs))
             if para_content.text.strip():
                 profile.paragraphs.append(para_content)
                 profile.word_count += len(para_content.text.split())
@@ -205,9 +205,61 @@ class DOCXExtractor:
                 indentation=indentation,
                 is_built_in=style.builtin,
             )
+            # Auto-detect semantic role from style name
+            ps.semantic_role = self._detect_role_from_name(style_id, style.name)
             styles[style_id] = ps
             
         return styles
+    
+    def _detect_role_from_name(self, style_id: str, style_name: str) -> Optional[SemanticRole]:
+        """Infer semantic role from style name/id."""
+        s = (style_id or '').lower()
+        n = (style_name or '').lower()
+        
+        # Title
+        if 'title' in s or 'title' in n or 'naglowek' in n:
+            return SemanticRole.TITLE
+        
+        # Heading levels (only 1-4 available)
+        for level in [1, 2, 3, 4]:
+            lvl_str = str(level)
+            if f'heading {level}' in n or f'heading{level}' in n or f'heading{level}' in s:
+                return [SemanticRole.HEADING_1, SemanticRole.HEADING_2,
+                        SemanticRole.HEADING_3, SemanticRole.HEADING_4][level-1]
+            # Polish heading names
+            if f'naglowek {level}' in n or f'naglowek{level}' in n:
+                return [SemanticRole.HEADING_1, SemanticRole.HEADING_2,
+                        SemanticRole.HEADING_3, SemanticRole.HEADING_4][level-1]
+        
+        # General heading
+        if 'heading' in s or 'heading' in n or 'naglowek' in n:
+            return SemanticRole.HEADING_1
+        
+        # Subtitle
+        if 'subtitle' in s or 'subtitle' in n or 'podtytul' in n:
+            return SemanticRole.SUBTITLE
+        
+        # Body
+        if 'body' in s or 'body' in n or 'tresc' in n or 'tekst' in n:
+            return SemanticRole.BODY_TEXT
+        
+        # Quote
+        if 'quote' in s or 'quote' in n or 'cytat' in n:
+            return SemanticRole.QUOTE
+        
+        # List
+        if 'bullet' in s or 'bullet' in n or 'punktor' in n:
+            return SemanticRole.LIST_BULLET
+        if 'number' in s or 'number' in n or 'numer' in n:
+            return SemanticRole.LIST_NUMBER
+        if 'list' in s or 'lista' in n:
+            return SemanticRole.LIST_BULLET
+        
+        # Caption
+        if 'caption' in s or 'caption' in n or 'podpis' in n:
+            return SemanticRole.CAPTION
+        
+        return None
     
     def _extract_document_defaults(self, doc) -> DocumentDefaults:
         """Extract document-level defaults."""
@@ -325,7 +377,7 @@ class DOCXExtractor:
         except Exception as e:
             logger.warning(f"Error reading styles.xml: {e}")
     
-    def _extract_paragraph(self, para) -> ParagraphContent:
+    def _extract_paragraph(self, para, para_index: int = 0, total_paras: int = 1) -> ParagraphContent:
         """Extract paragraph content and metadata."""
         text = para.text or ''
         
@@ -385,7 +437,10 @@ class DOCXExtractor:
             left_indent = None
         
         # Estimated semantic role from content
-        estimated_role = self._estimate_role(text, has_bold, max_font_size, style_name)
+        estimated_role = self._estimate_role(
+            text, has_bold, max_font_size, style_name,
+            is_list=is_list, para_index=para_index, total_paras=total_paras
+        )
         
         return ParagraphContent(
             text=text,
@@ -402,7 +457,8 @@ class DOCXExtractor:
         )
     
     def _estimate_role(self, text: str, has_bold: bool, max_font_size: Optional[float],
-                       style_name: Optional[str]) -> Optional[SemanticRole]:
+                       style_name: Optional[str], is_list: bool = False,
+                       para_index: int = 0, total_paras: int = 1) -> Optional[SemanticRole]:
         """Estimate semantic role from content heuristics."""
         text = text.strip()
         if not text:
@@ -429,7 +485,7 @@ class DOCXExtractor:
                 if key in s:
                     return role
         
-        # Heuristic based on formatting
+        # Heuristic based on formatting (font size)
         if max_font_size and max_font_size >= 20:
             if has_bold:
                 return SemanticRole.TITLE
@@ -438,8 +494,32 @@ class DOCXExtractor:
             if has_bold:
                 return SemanticRole.HEADING_1
         
-        if text.startswith('●') or text.startswith('•') or text.startswith('○'):
+        # Text-based heuristics (when font size not available)
+        text_upper = text.upper()
+        is_all_caps = text == text_upper and any(c.isalpha() for c in text)
+        word_count = len(text.split())
+        char_count = len(text)
+        
+        # Title: very short, first paragraph, all caps or bold
+        if para_index == 0 and char_count < 80:
+            if is_all_caps or has_bold:
+                return SemanticRole.TITLE
+        
+        # Heading 1: short, all caps, or bold short text
+        if char_count < 60 and (is_all_caps or (has_bold and word_count <= 5)):
+            return SemanticRole.HEADING_1
+        
+        # Heading 2: short bold text
+        if has_bold and char_count < 80 and word_count <= 6:
+            return SemanticRole.HEADING_2
+        
+        # List items
+        if is_list or text.startswith(('●', '•', '○', '▪', '-', '►', '→')):
             return SemanticRole.LIST_BULLET
+        
+        # Numbered list
+        if text[:3].strip().endswith('.') and text[:2].strip() and text[:2].strip()[0].isdigit():
+            return SemanticRole.LIST_NUMBER
         
         # Date patterns
         import re

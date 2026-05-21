@@ -36,10 +36,13 @@ class StyleMatchingEngine:
         """
         matches = []
         matched_source = set()
-        
-        # Pass 1: Exact style ID matching
+
+        # Pass 1: Exact style ID matching (only for non-generic styles)
         for para in content.paragraphs:
             if not para.style_name:
+                continue
+            if para.style_name in ('Normal', 'BodyText', 'BodyText2', 'NoSpacing'):
+                # Skip generic styles — let semantic matching handle them per paragraph
                 continue
             if para.style_name in template.paragraph_styles:
                 match = StyleMatch(
@@ -52,32 +55,62 @@ class StyleMatchingEngine:
                 if para.style_name not in matched_source:
                     matches.append(match)
                     matched_source.add(para.style_name)
-        
+
         # Pass 2: Fuzzy name matching for unmatched styles
         for para in content.paragraphs:
             if para.style_name in matched_source:
                 continue
             if not para.style_name:
                 continue
-            
+            if para.style_name in ('Normal', 'BodyText', 'BodyText2', 'NoSpacing'):
+                continue
+
             best_match = self._fuzzy_match_style(para.style_name, template.paragraph_styles)
             if best_match and best_match.confidence >= self.min_confidence:
                 matches.append(best_match)
                 matched_source.add(para.style_name)
-        
-        # Pass 3: Semantic role matching for unstyled/inline content
+
+        # Pass 3: Semantic role matching for ALL paragraphs (including Normal-styled)
+        semantic_matched_roles = set()  # Track which roles we've already found a match for
+        for para in content.paragraphs:
+            # If paragraph has a specific style that's already matched, skip
+            if para.style_name and para.style_name in matched_source:
+                continue
+
+            best_match = self._semantic_match(para, template)
+            if best_match and best_match.confidence >= self.min_confidence:
+                # Create a source ID based on the paragraph's role so different roles
+                # don't collide in the style_map
+                source_key = para.style_name or f"__role_{para.estimated_role.value}__"
+                match = StyleMatch(
+                    source_style_id=source_key,
+                    target_style_id=best_match.target_style_id,
+                    confidence=best_match.confidence,
+                    reason=best_match.reason,
+                    matcher_type=best_match.matcher_type,
+                )
+                if source_key not in matched_source:
+                    matches.append(match)
+                    matched_source.add(source_key)
+
+        # Pass 4: Content heuristic for anything still unmatched
         for para in content.paragraphs:
             if para.style_name and para.style_name in matched_source:
                 continue
-            
-            best_match = self._semantic_match(para, template)
+
+            best_match = self._content_heuristic_match(para, template)
             if best_match and best_match.confidence >= self.min_confidence:
-                # Map by estimated role, not style name (since content may not have styles)
-                matches.append(best_match)
-                # Mark as matched by role
-                if para.style_name:
-                    matched_source.add(para.style_name)
-        
+                source_key = para.style_name or f"__heuristic_{para.text[:20]}__"
+                if source_key not in matched_source:
+                    matches.append(StyleMatch(
+                        source_style_id=source_key,
+                        target_style_id=best_match.target_style_id,
+                        confidence=best_match.confidence,
+                        reason=best_match.reason,
+                        matcher_type=best_match.matcher_type,
+                    ))
+                    matched_source.add(source_key)
+
         # Build final style mapping with deduplication
         final_map = {}
         for match in matches:
@@ -85,7 +118,7 @@ class StyleMatchingEngine:
                 final_map[match.source_style_id] = match
             elif match.confidence > final_map[match.source_style_id].confidence:
                 final_map[match.source_style_id] = match
-        
+
         result = list(final_map.values())
         logger.info(f"Matched {len(result)} unique style mappings")
         return result

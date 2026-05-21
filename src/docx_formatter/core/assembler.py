@@ -220,28 +220,85 @@ class DocumentAssembler:
         template: TemplateProfile,
     ) -> None:
         """Add a paragraph to the document with proper style mapping."""
-        # Determine target style
+        # Determine target style using full resolution cascade
         target_style_id = self._resolve_target_style(para, style_map, template)
-        
-        if target_style_id:
-            try:
-                new_para = doc.add_paragraph(style=target_style_id)
-            except KeyError:
-                # Style not found, use Normal
-                new_para = doc.add_paragraph()
-        else:
-            new_para = doc.add_paragraph()
-        
-        # Add runs with formatting
+
+        # Create paragraph - try to use style, fall back to Normal + direct formatting
+        new_para = doc.add_paragraph()
+
+        # Add runs with inline formatting first
         if para.runs:
             for run_info in para.runs:
                 run = new_para.add_run(run_info.get('text', ''))
                 self._apply_run_formatting(run, run_info)
         else:
             new_para.add_run(para.text)
-        
-        # Apply direct paragraph formatting if style didn't cover it
+
+        # Now apply template style definition directly (runs exist now)
+        if target_style_id:
+            try:
+                new_para.style = target_style_id
+            except KeyError:
+                # Style doesn't exist in new doc — apply definition directly to runs + paragraph
+                self._apply_style_by_definition(new_para, target_style_id, template)
+
+        # Apply direct paragraph formatting for things not covered by style
         self._apply_direct_paragraph_formatting(new_para, para, template, target_style_id)
+    
+    def _apply_style_by_definition(self, new_para, style_id: str, template: TemplateProfile) -> None:
+        """Apply style properties directly to paragraph when style ID doesn't exist in doc."""
+        if style_id not in template.paragraph_styles:
+            return
+        tstyle = template.paragraph_styles[style_id]
+        
+        try:
+            # Font
+            if tstyle.font:
+                for run in new_para.runs:
+                    if tstyle.font.name:
+                        run.font.name = tstyle.font.name
+                    if tstyle.font.size_pt:
+                        run.font.size = Pt(tstyle.font.size_pt)
+                    if tstyle.font.bold is not None:
+                        run.font.bold = tstyle.font.bold
+                    if tstyle.font.italic is not None:
+                        run.font.italic = tstyle.font.italic
+            
+            # Paragraph format
+            pfmt = new_para.paragraph_format
+            if tstyle.alignment and tstyle.alignment.alignment:
+                align_map = {
+                    '0': WD_ALIGN_PARAGRAPH.LEFT,
+                    '1': WD_ALIGN_PARAGRAPH.CENTER,
+                    '2': WD_ALIGN_PARAGRAPH.RIGHT,
+                    '3': WD_ALIGN_PARAGRAPH.JUSTIFY,
+                    'LEFT': WD_ALIGN_PARAGRAPH.LEFT,
+                    'CENTER': WD_ALIGN_PARAGRAPH.CENTER,
+                    'RIGHT': WD_ALIGN_PARAGRAPH.RIGHT,
+                    'JUSTIFY': WD_ALIGN_PARAGRAPH.JUSTIFY,
+                    'BOTH': WD_ALIGN_PARAGRAPH.JUSTIFY,
+                    'None': WD_ALIGN_PARAGRAPH.LEFT,
+                }
+                if tstyle.alignment.alignment in align_map:
+                    pfmt.alignment = align_map[tstyle.alignment.alignment]
+            
+            if tstyle.spacing:
+                if tstyle.spacing.before_pt:
+                    pfmt.space_before = Pt(tstyle.spacing.before_pt)
+                if tstyle.spacing.after_pt:
+                    pfmt.space_after = Pt(tstyle.spacing.after_pt)
+                if tstyle.spacing.line_spacing:
+                    pfmt.line_spacing = tstyle.spacing.line_spacing
+            
+            if tstyle.indentation:
+                if tstyle.indentation.left_inches:
+                    pfmt.left_indent = Inches(tstyle.indentation.left_inches)
+                if tstyle.indentation.right_inches:
+                    pfmt.right_indent = Inches(tstyle.indentation.right_inches)
+                if tstyle.indentation.first_line_inches:
+                    pfmt.first_line_indent = Inches(tstyle.indentation.first_line_inches)
+        except Exception as e:
+            logger.debug(f"Could not apply style definition {style_id}: {e}")
     
     def _resolve_target_style(
         self,
@@ -250,39 +307,87 @@ class DocumentAssembler:
         template: TemplateProfile,
     ) -> Optional[str]:
         """Resolve which template style to apply to this paragraph."""
-        # If has explicit style and it's mapped
-        if para.style_name and para.style_name in style_map:
-            return style_map[para.style_name]
-        
-        # If has explicit style and exists in template
-        if para.style_name and para.style_name in template.paragraph_styles:
-            return para.style_name
-        
-        # Try semantic role matching
-        if para.estimated_role and para.estimated_role != SemanticRole.UNKNOWN:
+        # 1. If has explicit non-generic style and it's mapped in style_map
+        if para.style_name and para.style_name not in ('Normal', 'BodyText', 'BodyText2', 'NoSpacing'):
+            if para.style_name in style_map:
+                return style_map[para.style_name]
+            if para.style_name in template.paragraph_styles:
+                return para.style_name
+
+        # 2. Semantic role matching on the paragraph's estimated role
+        role = para.estimated_role
+        if not role or role == SemanticRole.UNKNOWN:
+            role = self._infer_role_from_content(para)
+
+        if role and role != SemanticRole.UNKNOWN:
+            # Direct semantic role match against template styles
             for style_id, tstyle in template.paragraph_styles.items():
-                if tstyle.semantic_role == para.estimated_role:
+                if tstyle.semantic_role == role:
                     return style_id
-        
-        # Try content-based heuristic
-        if para.estimated_role:
-            semantic_style = self._get_semantic_style(para.estimated_role, template)
-            if semantic_style:
-                return semantic_style
-        
-        return None
-    
+
+            # Heading level fallback: any heading style if role is heading
+            if role.value.startswith('heading') or role.value.startswith('title'):
+                for style_id, tstyle in template.paragraph_styles.items():
+                    trole = tstyle.semantic_role
+                    if trole and (trole.value.startswith('heading') or trole.value.startswith('title')):
+                        return style_id
+
+        # 3. Fallback: heuristic matching
+        return self._heuristic_style_match(para, template)
+
+    def _infer_role_from_content(self, para: ParagraphContent) -> SemanticRole:
+        """Infer semantic role from content when no style hint is available."""
+        text = para.text.strip()
+        if not text:
+            return SemanticRole.BODY_TEXT
+        # Title: short, large font
+        if len(text) < 100:
+            if para.max_font_size and para.max_font_size >= 20:
+                return SemanticRole.TITLE
+            if para.max_font_size and para.max_font_size >= 14:
+                return SemanticRole.HEADING_1
+            if para.has_bold:
+                return SemanticRole.HEADING_2
+        # List item
+        if para.is_list_item or text.startswith(('•', '●', '○', '▪', '-')):
+            return SemanticRole.LIST_BULLET
+        if text[:3].strip().endswith('.') and text[:2].strip()[0].isdigit():
+            return SemanticRole.LIST_NUMBER
+        return SemanticRole.BODY_TEXT
+
+    def _heuristic_style_match(self, para: ParagraphContent, template: TemplateProfile) -> Optional[str]:
+        """Match paragraph to template style by font size and properties."""
+        estimated_size = para.max_font_size or 11
+        best_target = None
+        best_score = 0.0
+        for style_id, tstyle in template.paragraph_styles.items():
+            score = 0.0
+            checks = 0
+            if tstyle.font and tstyle.font.size_pt:
+                size_diff = abs(tstyle.font.size_pt - estimated_size)
+                checks += 1
+                if size_diff < 1:
+                    score += 1.0
+                elif size_diff < 3:
+                    score += 0.7
+                elif size_diff < 5:
+                    score += 0.4
+            if para.has_bold is not None and tstyle.font and tstyle.font.bold is not None:
+                checks += 1
+                if para.has_bold == tstyle.font.bold:
+                    score += 1.0
+            if checks > 0 and score / checks > best_score:
+                best_score = score / checks
+                best_target = style_id
+        return best_target if best_score >= 0.3 else None
+
     def _get_semantic_style(self, role: SemanticRole, template: TemplateProfile) -> Optional[str]:
         """Get template style for semantic role."""
-        # Check if template has a preferred style for this role
         if role in template.semantic_styles:
             return template.semantic_styles[role]
-        
-        # Search all styles for matching role
         for style_id, tstyle in template.paragraph_styles.items():
             if tstyle.semantic_role == role:
                 return style_id
-        
         return None
     
     def _apply_run_formatting(self, run, run_info: Dict[str, Any]) -> None:
