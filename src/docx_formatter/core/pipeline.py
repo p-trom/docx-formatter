@@ -72,6 +72,7 @@ class FormatPipeline:
                 content=content_profile,
                 style_matches=style_matches,
                 output_path=output_path,
+                template_docx_path=template_path,
             )
             
             result.processing_time_ms = int((time.time() - start_time) * 1000)

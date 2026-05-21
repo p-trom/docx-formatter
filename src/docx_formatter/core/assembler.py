@@ -40,62 +40,100 @@ class DocumentAssembler:
         content: ContentProfile,
         style_matches: List[StyleMatch],
         output_path: Optional[str] = None,
+        template_docx_path: Optional[str] = None,
     ) -> ProcessingResult:
         """
         Build output document from template profile + content + style mappings.
-        
+
+        If template_docx_path is provided, uses the template DOCX as the base
+        document. This preserves headers, footers, section properties, background
+        images, watermarks, and page setup. Body content is replaced with the
+        new formatted content.
+
         Args:
             template: Profile of the template document (styles, settings)
             content: Profile of the content document (paragraphs, tables)
             style_matches: List of style mappings
             output_path: Where to save output DOCX
-            
+            template_docx_path: Optional path to the original template DOCX file
+
         Returns:
             ProcessingResult with output path or bytes
         """
         result = ProcessingResult()
-        
+
         try:
-            # Create new document
-            doc = Document()
-            
             # Build style mapping lookup: source_style_id -> target_style_id
             style_map = {m.source_style_id: m.target_style_id for m in style_matches}
-            
-            # Apply document defaults from template
-            self._apply_document_defaults(doc, template)
-            
-            # Add style definitions from template
-            self._copy_template_styles(doc, template)
-            
+
+            if template_docx_path:
+                # Use template as base — preserves headers, footers, sections, backgrounds
+                doc = Document(template_docx_path)
+                self._clear_body_content(doc)
+                # Ensure template styles are available in the doc
+                self._ensure_template_styles(doc, template)
+            else:
+                # Fallback: create new blank document (legacy behaviour)
+                doc = Document()
+                self._apply_document_defaults(doc, template)
+                self._copy_template_styles(doc, template)
+
             # Add paragraphs from content with mapped styles
             for para in content.paragraphs:
                 self._add_paragraph(doc, para, style_map, template)
-            
+
             # Add tables from content
             for table in content.tables:
                 self._add_table(doc, table, style_map, template)
-            
-            # Copy headers/footers from template
-            self._copy_headers_footers(doc, template)
-            
+
+            # If using legacy mode (no template path), copy headers/footers manually
+            if not template_docx_path:
+                self._copy_headers_footers(doc, template)
+
             # Save document
             if output_path:
                 doc.save(output_path)
                 result.output_path = output_path
                 logger.info(f"Document saved to {output_path}")
-            
+
             result.matched_styles = style_matches
             result.success = True
             result.warnings = []
-            
+
         except Exception as e:
             logger.error(f"Assembly failed: {e}")
             result.warnings.append(str(e))
             result.success = False
-        
+
         return result
     
+    def _clear_body_content(self, doc: Document) -> None:
+        """Remove all paragraphs and tables from the document body while preserving
+        section properties (headers, footers, page setup, background images)."""
+        body = doc.element.body
+        # Remove all <w:p> and <w:tbl> elements; keep <w:sectPr> (section properties)
+        for child in list(body):
+            if child.tag in (qn('w:p'), qn('w:tbl')):
+                body.remove(child)
+        logger.info("Cleared body content from template; headers/footers/sections preserved")
+
+    def _ensure_template_styles(self, doc: Document, template: TemplateProfile) -> None:
+        """Ensure all custom template styles exist in the base document.
+        When opening an existing DOCX, built-in styles are already present,
+        but custom styles may need updating."""
+        for style_id, tstyle in template.paragraph_styles.items():
+            if tstyle.is_built_in and not tstyle.is_default:
+                continue
+            try:
+                try:
+                    existing = doc.styles[style_id]
+                    self._apply_paragraph_style(existing, tstyle)
+                except KeyError:
+                    new_style = doc.styles.add_style(style_id, 1)
+                    self._apply_paragraph_style(new_style, tstyle)
+            except Exception as e:
+                logger.debug(f"Could not ensure style {style_id}: {e}")
+
     def _apply_document_defaults(self, doc: Document, template: TemplateProfile) -> None:
         """Apply page settings and margins from template."""
         defaults = template.document_defaults
