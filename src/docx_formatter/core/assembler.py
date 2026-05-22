@@ -1,22 +1,25 @@
 """
 Document Assembler - builds final DOCX output from template + content + matches.
 
-Approach: Use the template DOCX as the base document and replace paragraph text
-in each section based on semantic role matching. This preserves:
-- Section structure (headers, footers, page setup per section)
-- Background images, watermarks
-- Paragraph styles and style definitions
-- Content layout within each section
+Strategy when template_docx_path is provided:
+    1. Open the template DOCX as the base (preserves ZIP, media, headers, footers).
+    2. Categorise each section in the template as:
+       - structural  → TOC, front matter, cover design  (preserved but text cleared)
+       - content     → body text chapters, executive summaries, appendices (filled with content)
+    3. In content-bearing sections, replace template paragraphs in order using
+       semantic slot matching (Heading 1 ↔ Heading 1, Body text ↔ Body text).
+    4. Append unmatched content paras, and clear unused body-text placeholders.
 """
 
 import copy
 import logging
 from typing import Dict, List, Optional, Any
+from collections import defaultdict
 from pathlib import Path
 
 from docx import Document
-from docx.shared import Pt, Inches, RGBColor, Emu
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
+from docx.shared import Pt, Inches, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 
@@ -30,21 +33,13 @@ logger = logging.getLogger(__name__)
 
 
 class DocumentAssembler:
-    """
-    Assembles the final DOCX document from template + content + style matches.
-    
-    Strategy:
-    1. Open template DOCX as base (preserves ZIP, media, relationships)
-    2. For each template paragraph, identify its semantic role (title, heading1, etc.)
-    3. Find matching content paragraphs by same semantic role
-    4. Replace template paragraph text with content text (keep pPr/style intact)
-    5. Handle images by keeping them as-is (they exist in the template)
-    6. Add non-template content content (body text) in sections near its matching heading
-    """
-    
+    """Assembles the final DOCX document from template + content + style matches."""
+
     def __init__(self, preserve_template_content: bool = False):
         self.preserve_template_content = preserve_template_content
-    
+
+    # ── Public API ───────────────────────────────────────
+
     def assemble(
         self,
         template: TemplateProfile,
@@ -53,36 +48,14 @@ class DocumentAssembler:
         output_path: Optional[str] = None,
         template_docx_path: Optional[str] = None,
     ) -> ProcessingResult:
-        """
-        Build output document from template profile + content + style mappings.
-
-        If template_docx_path is provided, uses the template DOCX as the base
-        document. This preserves headers, footers, section properties, background
-        images, watermarks, and page setup. Body content is replaced with the
-        new formatted content.
-
-        Args:
-            template: Profile of the template document (styles, settings)
-            content: Profile of the content document (paragraphs, tables)
-            style_matches: List of style mappings
-            output_path: Where to save output DOCX
-            template_docx_path: Optional path to the original template DOCX file
-
-        Returns:
-            ProcessingResult with output path or bytes
-        """
         result = ProcessingResult()
-
         try:
             if template_docx_path:
                 doc = Document(template_docx_path)
-                self._apply_section_aware_replacement(doc, template, content, style_matches)
+                self._replace_in_template(doc, template, content, style_matches)
             else:
                 doc = Document()
-                self._apply_document_defaults(doc, template)
-                self._copy_template_styles(doc, template)
-                self._append_all_content(doc, template, content, style_matches)
-                self._copy_headers_footers(doc, template)
+                self._build_fresh(doc, template, content, style_matches)
 
             if output_path:
                 doc.save(output_path)
@@ -97,324 +70,467 @@ class DocumentAssembler:
             logger.error(f"Assembly failed: {e}", exc_info=True)
             result.warnings.append(str(e))
             result.success = False
-
         return result
 
-    # ──────────────────────────────────────────────
-    # SECTION-AWARE REPLACEMENT (template as base)
-    # ──────────────────────────────────────────────
+    # ── Main replacement logic ───────────────────────────
 
-    def _apply_section_aware_replacement(
+    def _replace_in_template(
         self,
         doc: Document,
         template: TemplateProfile,
         content: ContentProfile,
         style_matches: List[StyleMatch],
     ) -> None:
-        """Replace template content section by section using semantic role matching."""
+        """Replace template paragraph text based on section type.
 
-        # Build style mapping lookup: source_style_id -> target_style_id
+        Strategy:
+        1. Split content into two queues: headings and body text (preserves order).
+        2. In content sections, fill heading slots from heading queue and body slots
+           from body queue. This prevents headings/body text from mixing.
+        3. Structural sections (TOC, frontmatter) are left untouched.
+        4. Overflow from both queues is inserted into the last content section.
+        """
         style_map = {m.source_style_id: m.target_style_id for m in style_matches}
+        sections = self._get_section_boundaries(doc)
 
-        # 1. Split content paragraphs by semantic role for quick lookup
-        content_by_role = self._group_content_by_role(content.paragraphs)
+        # Split content into ordered queues, respecting style mappings
+        heading_style_ids = set()
+        for sid, tstyle in template.paragraph_styles.items():
+            if tstyle.semantic_role in (SemanticRole.TITLE, SemanticRole.HEADING_1,
+                                        SemanticRole.HEADING_2, SemanticRole.HEADING_3,
+                                        SemanticRole.HEADING_4):
+                heading_style_ids.add(sid)
 
-        # 2. Build section boundaries from template document
-        sections_boundaries = self._get_section_boundaries(doc)
-        logger.info(f"Template has {len(sections_boundaries)} sections")
+        content_headings = []
+        content_body = []
+        for p in content.paragraphs:
+            # Is this content's style mapped to a heading?
+            mapped_to_heading = (p.style_name and p.style_name in style_map
+                                 and style_map[p.style_name] in heading_style_ids)
+            # Is this explicitly a heading style?
+            style_is_heading = p.style_name and "heading" in p.style_name.lower()
+            # Heuristic role
+            role = self._resolve_content_role(p)
 
-        # 3. Track which content paragraphs we've used
-        used_content_indices = set()
+            if mapped_to_heading or style_is_heading or role in (
+                SemanticRole.TITLE, SemanticRole.HEADING_1,
+                SemanticRole.HEADING_2, SemanticRole.HEADING_3,
+                SemanticRole.HEADING_4,
+            ):
+                content_headings.append(p)
+            else:
+                content_body.append(p)
 
-        # 4. For each section, replace template text with matching content
-        for sec_idx, (start, end) in enumerate(sections_boundaries):
-            for t_para_idx in range(start, end + 1):
-                t_para_element = doc.paragraphs[t_para_idx]._element
-                # Determine semantic role of this template paragraph
-                role = self._get_template_para_role(doc.paragraphs[t_para_idx], template)
-                
-                # Find best matching content paragraph with same role
-                match = self._find_matching_content_para(role, content_by_role, used_content_indices)
-                if match:
-                    c_para, c_idx = match
-                    self._replace_para_text_keep_structure(t_para_element, c_para, template, style_map)
-                    used_content_indices.add(c_idx)
+        h_idx = 0
+        b_idx = 0
+        last_content_section_end = None
 
-        # 5. Handle remaining unmatched content paragraphs
-        remaining = [p for i, p in enumerate(content.paragraphs) if i not in used_content_indices]
-        if remaining:
-            logger.info(f"Adding {len(remaining)} remaining content paragraphs")
-            # Insert remaining body text after the last filled section or at the end
-            self._add_remaining_content(doc, remaining, template, style_map)
+        # Pass 1: identify last content section
+        for sec_idx, (start, end) in enumerate(sections):
+            if self._classify_section(doc, start, end) == "content":
+                last_content_section_end = end
+
+        # Pass 2: fill slots from appropriate queues
+        for sec_idx, (start, end) in enumerate(sections):
+            sec_role = self._classify_section(doc, start, end)
+
+            if sec_role == "content":
+                for t_idx in range(start, end + 1):
+                    slot = self._slot_type(doc.paragraphs[t_idx])
+                    if slot is None:
+                        self._clear_para_runs(doc.paragraphs[t_idx]._element)
+                        continue
+
+                    if slot == "heading" and h_idx < len(content_headings):
+                        self._replace_para_text_keep_structure(
+                            doc.paragraphs[t_idx]._element,
+                            content_headings[h_idx],
+                            template, style_map,
+                        )
+                        h_idx += 1
+                    elif slot == "body" and b_idx < len(content_body):
+                        self._replace_para_text_keep_structure(
+                            doc.paragraphs[t_idx]._element,
+                            content_body[b_idx],
+                            template, style_map,
+                        )
+                        b_idx += 1
+                    else:
+                        self._clear_para_runs(doc.paragraphs[t_idx]._element)
+
+            elif sec_role == "cover":
+                cover_filled = False
+                for t_idx in range(start, end + 1):
+                    slot = self._slot_type(doc.paragraphs[t_idx])
+                    if slot == "heading" and not cover_filled and h_idx < len(content_headings):
+                        self._replace_para_text_keep_structure(
+                            doc.paragraphs[t_idx]._element,
+                            content_headings[h_idx],
+                            template, style_map,
+                        )
+                        h_idx += 1
+                        cover_filled = True
+                    elif slot in ("heading", "body"):
+                        self._clear_para_runs(doc.paragraphs[t_idx]._element)
+
+            elif sec_role in ("toc", "frontmatter"):
+                if not self.preserve_template_content:
+                    for t_idx in range(start, end + 1):
+                        if self._slot_type(doc.paragraphs[t_idx]) == "body":
+                            self._clear_para_runs(doc.paragraphs[t_idx]._element)
+
+        # Pass 3: merge remaining headings + body text in original order and insert
+        remaining = self._merge_remaining(content.paragraphs, content_headings[h_idx:], content_body[b_idx:])
+        if remaining and last_content_section_end is not None:
+            self._insert_overflow_before_section_break(
+                doc, last_content_section_end, remaining, template, style_map,
+            )
+
+    def _merge_remaining(self, all_paras: List[ParagraphContent],
+                         remaining_headings: List[ParagraphContent],
+                         remaining_body: List[ParagraphContent]) -> List[ParagraphContent]:
+        """Reconstruct remaining paragraphs in original document order."""
+        remaining_set = set(id(p) for p in remaining_headings + remaining_body)
+        return [p for p in all_paras if id(p) in remaining_set]
+
+    def _insert_overflow_before_section_break(
+        self,
+        doc: Document,
+        section_end_para_idx: int,
+        remaining: List[ParagraphContent],
+        template: TemplateProfile,
+        style_map: Dict[str, str],
+    ) -> None:
+        """Insert remaining content paragraphs before the section-break paragraph."""
+        body_elem = doc.element.body
+        # Find the section-break paragraph element
+        sect_break_elem = doc.paragraphs[section_end_para_idx]._element
+        # Find its index in the body
+        try:
+            insert_idx = list(body_elem).index(sect_break_elem)
+        except ValueError:
+            insert_idx = len(list(body_elem))
+
+        for para in remaining:
+            target_style_id = self._resolve_target_style_for_append(para, style_map, template)
+            p_elem = self._new_paragraph_element(para, target_style_id)
+            body_elem.insert(insert_idx, p_elem)
+            insert_idx += 1
+
+    def _resolve_content_role(self, para: ParagraphContent) -> SemanticRole:
+        """Determine semantic role, prioritising explicit style names over heuristics."""
+        # If the paragraph has a heading style, trust it
+        style = (para.style_name or "").lower()
+        if "heading" in style or "title" in style:
+            if "heading 1" in style or "heading1" in style:
+                return SemanticRole.HEADING_1
+            if "heading 2" in style or "heading2" in style:
+                return SemanticRole.HEADING_2
+            if "heading 3" in style or "heading3" in style:
+                return SemanticRole.HEADING_3
+            if "heading 4" in style or "heading4" in style:
+                return SemanticRole.HEADING_4
+            if "title" in style:
+                return SemanticRole.TITLE
+            return SemanticRole.HEADING_1
+
+        if para.estimated_role and para.estimated_role != SemanticRole.UNKNOWN:
+            return para.estimated_role
+
+        text = para.text.strip()
+        if not text:
+            return SemanticRole.UNKNOWN
+        if len(text) < 100:
+            if para.max_font_size and para.max_font_size >= 20:
+                return SemanticRole.TITLE
+            if para.max_font_size and para.max_font_size >= 16:
+                return SemanticRole.HEADING_1
+            if para.max_font_size and para.max_font_size >= 12:
+                return SemanticRole.HEADING_2
+            if para.has_bold and len(text) < 80:
+                return SemanticRole.HEADING_2
+        if para.is_list_item or text.startswith(('•', '●', '○', '▪', '-')):
+            return SemanticRole.LIST_BULLET
+        if text[:3].strip().endswith('.') and text[:2].strip()[0].isdigit():
+            return SemanticRole.LIST_NUMBER
+        return SemanticRole.BODY_TEXT
 
     def _get_section_boundaries(self, doc: Document) -> List[tuple]:
-        """Get (start_para_idx, end_para_idx) for each section."""
-        sect_breaks = []
-        for i, p in enumerate(doc.paragraphs):
-            pPr = p._element.find(qn('w:pPr'))
-            if pPr is not None and pPr.find(qn('w:sectPr')) is not None:
-                sect_breaks.append(i)
-
+        """Return list of (start_para_index, end_para_index) for each section."""
+        breaks = [
+            i for i, p in enumerate(doc.paragraphs)
+            if self._has_sect_pr(p._element)
+        ]
         boundaries = []
         start = 0
-        for break_idx in sect_breaks:
-            boundaries.append((start, break_idx))
-            start = break_idx + 1
-        # Last section goes from last break to end
+        for b in breaks:
+            boundaries.append((start, b))
+            start = b + 1
         boundaries.append((start, len(doc.paragraphs) - 1))
         return boundaries
 
-    def _group_content_by_role(self, paragraphs: List[ParagraphContent]) -> Dict[SemanticRole, List[tuple]]:
-        """Group content paragraphs by their semantic role.
-        Returns dict of role -> [(para, idx), ...]."""
-        result = {}
-        for idx, para in enumerate(paragraphs):
-            role = self._resolve_content_role(para)
-            if role not in result:
-                result[role] = []
-            result[role].append((para, idx))
-        return result
+    @staticmethod
+    def _has_sect_pr(p_elem) -> bool:
+        pPr = p_elem.find(qn('w:pPr'))
+        return pPr is not None and pPr.find(qn('w:sectPr')) is not None
 
-    def _resolve_content_role(self, para: ParagraphContent) -> SemanticRole:
-        """Determine semantic role of a content paragraph."""
-        if para.estimated_role and para.estimated_role != SemanticRole.UNKNOWN:
-            return para.estimated_role
-        return self._infer_role_from_content(para)
+    def _classify_section(self, doc: Document, start: int, end: int) -> str:
+        """Classify section role from paragraph style names.
+        Returns one of: 'content', 'toc', 'frontmatter', 'cover', 'structural_else'."""
+        styles = set()
+        for i in range(start, end + 1):
+            s = (doc.paragraphs[i].style.name or "").lower()
+            styles.add(s)
 
-    def _get_template_para_role(self, para, template: TemplateProfile) -> SemanticRole:
-        """Determine semantic role of a template paragraph."""
-        # Try by style
-        style_name = para.style.name if para.style else None
-        if style_name:
-            # Check template profile styles
-            for sid, tstyle in template.paragraph_styles.items():
-                if tstyle.name == style_name or sid == style_name:
-                    if tstyle.semantic_role and tstyle.semantic_role != SemanticRole.UNKNOWN:
-                        return tstyle.semantic_role
-        # Infer from content
+        if any("toc " in s for s in styles):
+            return "toc"
+        if "frontmatter" in styles:
+            return "frontmatter"
+        if "cap cover" in styles:
+            return "cover"
+        content_keywords = ("heading 1", "heading1", "body text",
+                            "executive summary", "chapter number", "chapter title",
+                            "appendix number")
+        if any(kw in s for s in styles for kw in content_keywords):
+            return "content"
+        return "structural_else"
+
+    def _slot_type(self, para) -> Optional[str]:
+        """Return slot type for a template paragraph, or None if structural/navigational."""
+        s = (para.style.name or "").lower()
         text = para.text.strip()
-        if para.style and para.style.name:
-            sname = para.style.name.lower()
-            if 'title' in sname or 'cover' in sname:
-                return SemanticRole.TITLE
-            if 'heading 1' == sname or 'heading1' in sname:
-                return SemanticRole.HEADING_1
-            if 'heading 2' == sname or 'heading2' in sname:
-                return SemanticRole.HEADING_2
-            if 'heading 3' == sname or 'heading3' in sname:
-                return SemanticRole.HEADING_3
-            if 'heading 4' == sname or 'heading4' in sname:
-                return SemanticRole.HEADING_4
-            if 'heading 5' == sname or 'heading5' in sname:
-                return SemanticRole.HEADING_4
-        if text and len(text) < 100:
-            if para.style and hasattr(para.style, 'font'):
-                size = para.style.font.size
-                if size:
-                    size_pt = size.pt if hasattr(size, 'pt') else 11
-                    if size_pt >= 20:
-                        return SemanticRole.TITLE
-                    if size_pt >= 16:
-                        return SemanticRole.HEADING_1
-                    if size_pt >= 14:
-                        return SemanticRole.HEADING_2
-        return SemanticRole.BODY_TEXT
 
-    def _find_matching_content_para(
-        self,
-        role: SemanticRole,
-        content_by_role: Dict[SemanticRole, List[tuple]],
-        used_indices: set,
-    ) -> Optional[tuple]:
-        """Find the next unused content paragraph matching the given role."""
-        # Try exact role match first
-        for candidate_role in [role, self._fallback_role(role)]:
-            if candidate_role in content_by_role:
-                for para, idx in content_by_role[candidate_role]:
-                    if idx not in used_indices:
-                        return (para, idx)
+        # Cover title slots — only the first short text lines are title slots
+        if "cover" in s:
+            if text and len(text) < 150:
+                return "heading"
+            return None
+
+        # Structural navigation / TOC
+        if "toc " in s or "frontmatter" in s:
+            return None
+
+        # Numbered structural elements — these are design elements ("Chapter 1", "Appendix A")
+        # and should NOT be filled with content text
+        if "chapter number" in s or "appendix number" in s:
+            return None
+
+        # Headings
+        for kw in ("heading 1", "heading1", "heading 2", "heading2",
+                   "heading 3", "heading3", "heading 4", "heading4",
+                   "executive summary/prelims heading"):
+            if kw in s:
+                return "heading"
+
+        # Chapter title — this IS a content slot (it holds the chapter title text)
+        if "chapter title" in s:
+            return "heading"
+
+        # Body text styles
+        for kw in ("body text", "bodytext", "full out body text",
+                   "body numbered prelims", "body annexes",
+                   "bullets", "numbered bullets", "free numbering"):
+            if kw in s:
+                return "body"
+
+        # Normal in a content section → likely body
+        if s == "normal":
+            if text and len(text) > 10:
+                return "body"
+            return None
+
         return None
 
-    def _fallback_role(self, role: SemanticRole) -> SemanticRole:
-        """Map specific roles to less-specific fallbacks."""
-        fallback_map = {
-            SemanticRole.HEADING_4: SemanticRole.HEADING_4,
-            SemanticRole.HEADING_4: SemanticRole.HEADING_3,
-            SemanticRole.HEADING_3: SemanticRole.HEADING_2,
-            SemanticRole.HEADING_2: SemanticRole.HEADING_1,
-            SemanticRole.TITLE: SemanticRole.HEADING_1,
-            SemanticRole.SUBTITLE: SemanticRole.HEADING_2,
-        }
-        return fallback_map.get(role, SemanticRole.BODY_TEXT)
+    # ── Content classification ───────────────────────────
 
+    def _pick_content_headings(self, paragraphs: List[ParagraphContent]) -> List[ParagraphContent]:
+        """Filter paragraphs that map to heading slots (in original document order)."""
+        result = []
+        for p in paragraphs:
+            role = self._resolve_content_role(p)
+            if role in (SemanticRole.TITLE, SemanticRole.HEADING_1, SemanticRole.HEADING_2,
+                        SemanticRole.HEADING_3, SemanticRole.HEADING_4):
+                result.append(p)
+        return result
+
+    def _pick_content_body(self, paragraphs: List[ParagraphContent]) -> List[ParagraphContent]:
+        """Filter paragraphs that map to body slots (in original document order)."""
+        result = []
+        for p in paragraphs:
+            role = self._resolve_content_role(p)
+            if role in (SemanticRole.BODY_TEXT, SemanticRole.LIST_BULLET,
+                        SemanticRole.LIST_NUMBER, SemanticRole.UNKNOWN):
+                result.append(p)
+        return result
+
+    # ── Replacement primitives ───────────────────────────
+
+    @staticmethod
     def _replace_para_text_keep_structure(
-        self,
         t_para_element,
         c_para: ParagraphContent,
         template: TemplateProfile,
         style_map: Dict[str, str],
     ) -> None:
         """Replace text in a template paragraph while keeping pPr (style, sectPr, etc.)."""
-        # Clear existing runs
         for run in list(t_para_element.findall(qn('w:r'))):
             t_para_element.remove(run)
 
-        # Add new runs with content text (and any inline formatting from content)
         if c_para.runs:
-            # Use content runs with inline formatting
             for run_info in c_para.runs:
                 new_run = OxmlElement('w:r')
                 rPr = OxmlElement('w:rPr')
                 if run_info.get('bold'):
-                    r_bold = OxmlElement('w:b')
-                    rPr.append(r_bold)
+                    rPr.append(OxmlElement('w:b'))
                 if run_info.get('italic'):
-                    r_italic = OxmlElement('w:i')
-                    rPr.append(r_italic)
-                new_run.append(rPr)
+                    rPr.append(OxmlElement('w:i'))
+                if run_info.get('underline'):
+                    rPr.append(OxmlElement('w:u'))
+                if len(rPr) > 0:
+                    new_run.append(rPr)
                 t_elem = OxmlElement('w:t')
                 t_elem.text = run_info.get('text', '')
                 new_run.append(t_elem)
                 t_para_element.append(new_run)
         else:
-            # Simple text
             new_run = OxmlElement('w:r')
             t_elem = OxmlElement('w:t')
             t_elem.text = c_para.text or ''
             new_run.append(t_elem)
             t_para_element.append(new_run)
 
-    def _add_remaining_content(
+    @staticmethod
+    def _clear_para_runs(p_elem) -> None:
+        """Remove all runs from a paragraph (keeps pPr and sectPr intact)."""
+        for run in list(p_elem.findall(qn('w:r'))):
+            p_elem.remove(run)
+
+    # ── Remaining content insertion ──────────────────────
+
+    def _append_remaining_content(
         self,
         doc: Document,
         remaining: List[ParagraphContent],
         template: TemplateProfile,
         style_map: Dict[str, str],
     ) -> None:
-        """Add remaining unmatched content paragraphs to the document.
-        Find the body section and insert there (after the last heading)."""
-        body = doc.element.body
-        
-        # Find last section break para - add after it
-        last_sect_para = None
-        for child in reversed(list(body)):
+        """Append remaining content paragraphs after the main body section."""
+        if not remaining:
+            return
+
+        body_elem = doc.element.body
+        insert_after = None
+        # Find the last non-structural paragraph before the final sectPr
+        for child in reversed(list(body_elem)):
             if child.tag == qn('w:p'):
                 pPr = child.find(qn('w:pPr'))
                 if pPr is not None and pPr.find(qn('w:sectPr')) is not None:
-                    last_sect_para = child
-                    break
-
-        # Insert remaining content after the last section break paragraph
-        insert_after = last_sect_para if last_sect_para is not None else None
+                    continue
+                insert_after = child
+                break
+            elif child.tag == qn('w:tbl'):
+                # Tables count too
+                insert_after = child
+                break
 
         for para in remaining:
-            new_p = OxmlElement('w:p')
-            target_style_id = self._resolve_target_style(para, style_map, template)
-            
-            # Apply style via pPr
-            pPr = OxmlElement('w:pPr')
-            if target_style_id:
-                pStyle = OxmlElement('w:pStyle')
-                pStyle.set(qn('w:val'), target_style_id)
-                pPr.append(pStyle)
-            new_p.append(pPr)
-            
-            # Add runs
-            if para.runs:
-                for run_info in para.runs:
-                    new_r = OxmlElement('w:r')
-                    if run_info.get('bold') or run_info.get('italic') or run_info.get('underline'):
-                        rPr = OxmlElement('w:rPr')
-                        if run_info.get('bold'):
-                            rPr.append(OxmlElement('w:b'))
-                        if run_info.get('italic'):
-                            rPr.append(OxmlElement('w:i'))
-                        if run_info.get('underline'):
-                            rPr.append(OxmlElement('w:u'))
-                        new_r.append(rPr)
-                    t_elem = OxmlElement('w:t')
-                    t_elem.text = run_info.get('text', '')
-                    new_r.append(t_elem)
-                    new_p.append(new_r)
-            else:
-                new_r = OxmlElement('w:r')
-                t_elem = OxmlElement('w:t')
-                t_elem.text = para.text or ''
-                new_r.append(t_elem)
-                new_p.append(new_r)
-            
+            target_style_id = self._resolve_target_style_for_append(para, style_map, template)
+            p_elem = self._new_paragraph_element(para, target_style_id)
             if insert_after is not None:
-                # Insert after the section-break paragraph using lxml insert
-                idx = list(body).index(insert_after)
-                body.insert(idx + 1, new_p)
-                insert_after = new_p
+                idx = list(body_elem).index(insert_after)
+                body_elem.insert(idx + 1, p_elem)
+                insert_after = p_elem
             else:
-                body.append(new_p)
+                body_elem.append(p_elem)
 
-    # ──────────────────────────────────────────────
-    # FALLBACK LEGACY (new blank document)
-    # ──────────────────────────────────────────────
-    
-    def _append_all_content(
+    def _new_paragraph_element(self, para: ParagraphContent, style_id: Optional[str]):
+        p = OxmlElement('w:p')
+        pPr = OxmlElement('w:pPr')
+        if style_id:
+            pStyle = OxmlElement('w:pStyle')
+            pStyle.set(qn('w:val'), style_id)
+            pPr.append(pStyle)
+        p.append(pPr)
+
+        if para.runs:
+            for run_info in para.runs:
+                r = OxmlElement('w:r')
+                if run_info.get('bold') or run_info.get('italic') or run_info.get('underline'):
+                    rPr = OxmlElement('w:rPr')
+                    if run_info.get('bold'):
+                        rPr.append(OxmlElement('w:b'))
+                    if run_info.get('italic'):
+                        rPr.append(OxmlElement('w:i'))
+                    if run_info.get('underline'):
+                        rPr.append(OxmlElement('w:u'))
+                    r.append(rPr)
+                t = OxmlElement('w:t')
+                t.text = run_info.get('text', '')
+                r.append(t)
+                p.append(r)
+        else:
+            r = OxmlElement('w:r')
+            t = OxmlElement('w:t')
+            t.text = para.text or ''
+            r.append(t)
+            p.append(r)
+        return p
+
+    def _resolve_target_style_for_append(
         self,
-        doc: Document,
+        para: ParagraphContent,
+        style_map: Dict[str, str],
         template: TemplateProfile,
-        content: ContentProfile,
-        style_matches: List[StyleMatch],
+    ) -> Optional[str]:
+        if para.style_name and para.style_name not in ('Normal', 'BodyText', 'BodyText2', 'NoSpacing'):
+            if para.style_name in style_map:
+                return style_map[para.style_name]
+            if para.style_name in template.paragraph_styles:
+                return para.style_name
+        role = para.estimated_role
+        if not role or role == SemanticRole.UNKNOWN:
+            role = self._infer_role_from_content(para)
+        if role == SemanticRole.HEADING_1:
+            for sid, tstyle in template.paragraph_styles.items():
+                if tstyle.semantic_role == SemanticRole.HEADING_1:
+                    return sid
+        return self._heuristic_style_match(para, template)
+
+    # ── Legacy / fallback for fresh Document() creation ──
+
+    def _build_fresh(
+        self, doc: Document, template: TemplateProfile,
+        content: ContentProfile, style_matches: List[StyleMatch],
     ) -> None:
-        """Fallback: append all content to a fresh document."""
         style_map = {m.source_style_id: m.target_style_id for m in style_matches}
+        self._apply_document_defaults(doc, template)
+        self._copy_template_styles(doc, template)
         for para in content.paragraphs:
             self._add_paragraph(doc, para, style_map, template)
         for table in content.tables:
             self._add_table(doc, table, style_map, template)
-    
-    def _ensure_template_styles(self, doc: Document, template: TemplateProfile) -> None:
-        """Ensure all custom template styles exist in the base document."""
-        for style_id, tstyle in template.paragraph_styles.items():
-            if tstyle.is_built_in and not tstyle.is_default:
-                continue
-            try:
-                try:
-                    existing = doc.styles[style_id]
-                    self._apply_paragraph_style(existing, tstyle)
-                except KeyError:
-                    new_style = doc.styles.add_style(style_id, 1)
-                    self._apply_paragraph_style(new_style, tstyle)
-            except Exception as e:
-                logger.debug(f"Could not ensure style {style_id}: {e}")
-    
+        self._copy_headers_footers(doc, template)
+
     def _apply_document_defaults(self, doc: Document, template: TemplateProfile) -> None:
-        """Apply page settings and margins from template."""
         defaults = template.document_defaults
-        
         if not defaults.margins:
             return
-        
         try:
             section = doc.sections[0]
             if defaults.margins:
-                if 'top' in defaults.margins:
-                    section.top_margin = Inches(defaults.margins['top'])
-                if 'bottom' in defaults.margins:
-                    section.bottom_margin = Inches(defaults.margins['bottom'])
-                if 'left' in defaults.margins:
-                    section.left_margin = Inches(defaults.margins['left'])
-                if 'right' in defaults.margins:
-                    section.right_margin = Inches(defaults.margins['right'])
-            
+                for key in ('top', 'bottom', 'left', 'right'):
+                    if key in defaults.margins:
+                        setattr(section, f"{key}_margin", Inches(defaults.margins[key]))
             if defaults.page_width_inches:
                 section.page_width = Inches(defaults.page_width_inches)
             if defaults.page_height_inches:
                 section.page_height = Inches(defaults.page_height_inches)
-            
             if defaults.orientation == 'landscape':
-                section.orientation = 1  # WD_ORIENT.LANDSCAPE
+                section.orientation = 1
         except Exception as e:
             logger.warning(f"Could not apply document defaults: {e}")
-    
+
     def _copy_template_styles(self, doc: Document, template: TemplateProfile) -> None:
-        """Copy style definitions from template profile to new document."""
         for style_id, tstyle in template.paragraph_styles.items():
             if tstyle.is_built_in and not tstyle.is_default:
                 continue
@@ -427,9 +543,8 @@ class DocumentAssembler:
                     self._apply_paragraph_style(new_style, tstyle)
             except Exception as e:
                 logger.debug(f"Could not copy style {style_id}: {e}")
-    
+
     def _apply_paragraph_style(self, docx_style, tstyle: ParagraphStyle) -> None:
-        """Apply ParagraphStyle properties to a python-docx style object."""
         try:
             font = docx_style.font
             if tstyle.font:
@@ -446,24 +561,17 @@ class DocumentAssembler:
                         font.color.rgb = RGBColor.from_string(tstyle.font.color)
                     except:
                         pass
-            
             pfmt = docx_style.paragraph_format
             if tstyle.alignment and tstyle.alignment.alignment:
                 align_map = {
-                    '0': WD_ALIGN_PARAGRAPH.LEFT,
-                    '1': WD_ALIGN_PARAGRAPH.CENTER,
-                    '2': WD_ALIGN_PARAGRAPH.RIGHT,
-                    '3': WD_ALIGN_PARAGRAPH.JUSTIFY,
-                    'LEFT': WD_ALIGN_PARAGRAPH.LEFT,
-                    'CENTER': WD_ALIGN_PARAGRAPH.CENTER,
-                    'RIGHT': WD_ALIGN_PARAGRAPH.RIGHT,
-                    'JUSTIFY': WD_ALIGN_PARAGRAPH.JUSTIFY,
-                    'BOTH': WD_ALIGN_PARAGRAPH.JUSTIFY,
-                    'None': WD_ALIGN_PARAGRAPH.LEFT,
+                    '0': WD_ALIGN_PARAGRAPH.LEFT, 'LEFT': WD_ALIGN_PARAGRAPH.LEFT,
+                    '1': WD_ALIGN_PARAGRAPH.CENTER, 'CENTER': WD_ALIGN_PARAGRAPH.CENTER,
+                    '2': WD_ALIGN_PARAGRAPH.RIGHT, 'RIGHT': WD_ALIGN_PARAGRAPH.RIGHT,
+                    '3': WD_ALIGN_PARAGRAPH.JUSTIFY, 'JUSTIFY': WD_ALIGN_PARAGRAPH.JUSTIFY,
+                    'BOTH': WD_ALIGN_PARAGRAPH.JUSTIFY, 'None': WD_ALIGN_PARAGRAPH.LEFT,
                 }
                 if tstyle.alignment.alignment in align_map:
                     pfmt.alignment = align_map[tstyle.alignment.alignment]
-            
             if tstyle.spacing:
                 if tstyle.spacing.before_pt:
                     pfmt.space_before = Pt(tstyle.spacing.before_pt)
@@ -471,7 +579,6 @@ class DocumentAssembler:
                     pfmt.space_after = Pt(tstyle.spacing.after_pt)
                 if tstyle.spacing.line_spacing:
                     pfmt.line_spacing = tstyle.spacing.line_spacing
-            
             if tstyle.indentation:
                 if tstyle.indentation.left_inches:
                     pfmt.left_indent = Inches(tstyle.indentation.left_inches)
@@ -481,50 +588,38 @@ class DocumentAssembler:
                     pfmt.first_line_indent = Inches(tstyle.indentation.first_line_inches)
         except Exception as e:
             logger.debug(f"Error applying style {tstyle.style_id}: {e}")
-    
+
     def _add_paragraph(
-        self,
-        doc: Document,
-        para: ParagraphContent,
-        style_map: Dict[str, str],
-        template: TemplateProfile,
+        self, doc: Document, para: ParagraphContent,
+        style_map: Dict[str, str], template: TemplateProfile,
     ) -> None:
-        """Add a paragraph to a NEW document with proper style mapping (legacy mode)."""
         target_style_id = self._resolve_target_style(para, style_map, template)
         new_para = doc.add_paragraph()
-        
         if para.runs:
             for run_info in para.runs:
                 run = new_para.add_run(run_info.get('text', ''))
                 self._apply_run_formatting(run, run_info)
         else:
             new_para.add_run(para.text)
-        
         if target_style_id:
             try:
                 new_para.style = target_style_id
             except KeyError:
                 self._apply_style_by_definition(new_para, target_style_id, template)
-        
         self._apply_direct_paragraph_formatting(new_para, para, template, target_style_id)
-    
+
     def _resolve_target_style(
-        self,
-        para: ParagraphContent,
-        style_map: Dict[str, str],
-        template: TemplateProfile,
+        self, para: ParagraphContent,
+        style_map: Dict[str, str], template: TemplateProfile,
     ) -> Optional[str]:
-        """Resolve which template style to apply to this paragraph."""
         if para.style_name and para.style_name not in ('Normal', 'BodyText', 'BodyText2', 'NoSpacing'):
             if para.style_name in style_map:
                 return style_map[para.style_name]
             if para.style_name in template.paragraph_styles:
                 return para.style_name
-
         role = para.estimated_role
         if not role or role == SemanticRole.UNKNOWN:
             role = self._infer_role_from_content(para)
-
         if role and role != SemanticRole.UNKNOWN:
             for style_id, tstyle in template.paragraph_styles.items():
                 if tstyle.semantic_role == role:
@@ -534,11 +629,9 @@ class DocumentAssembler:
                     trole = tstyle.semantic_role
                     if trole and (trole.value.startswith('heading') or trole.value.startswith('title')):
                         return style_id
-
         return self._heuristic_style_match(para, template)
 
     def _infer_role_from_content(self, para: ParagraphContent) -> SemanticRole:
-        """Infer semantic role from content when no style hint is available."""
         text = para.text.strip()
         if not text:
             return SemanticRole.BODY_TEXT
@@ -551,12 +644,9 @@ class DocumentAssembler:
                 return SemanticRole.HEADING_2
         if para.is_list_item or text.startswith(('•', '●', '○', '▪', '-')):
             return SemanticRole.LIST_BULLET
-        if text[:3].strip().endswith('.') and text[:2].strip()[0].isdigit():
-            return SemanticRole.LIST_NUMBER
         return SemanticRole.BODY_TEXT
 
     def _heuristic_style_match(self, para: ParagraphContent, template: TemplateProfile) -> Optional[str]:
-        """Match paragraph to template style by font size and properties."""
         estimated_size = para.max_font_size or 11
         best_target = None
         best_score = 0.0
@@ -574,15 +664,14 @@ class DocumentAssembler:
                     score += 0.4
             if para.has_bold is not None and tstyle.font and tstyle.font.bold is not None:
                 checks += 1
-                if para.has_bold == tstyle.font.bold:
-                    score += 1.0
+                value = 1.0 if para.has_bold == tstyle.font.bold else 0.0
+                score += value
             if checks > 0 and score / checks > best_score:
                 best_score = score / checks
                 best_target = style_id
         return best_target if best_score >= 0.3 else None
 
     def _apply_style_by_definition(self, new_para, style_id: str, template: TemplateProfile) -> None:
-        """Apply style properties directly to paragraph when style ID doesn't exist in doc."""
         if style_id not in template.paragraph_styles:
             return
         tstyle = template.paragraph_styles[style_id]
@@ -600,16 +689,11 @@ class DocumentAssembler:
             pfmt = new_para.paragraph_format
             if tstyle.alignment and tstyle.alignment.alignment:
                 align_map = {
-                    '0': WD_ALIGN_PARAGRAPH.LEFT,
-                    '1': WD_ALIGN_PARAGRAPH.CENTER,
-                    '2': WD_ALIGN_PARAGRAPH.RIGHT,
-                    '3': WD_ALIGN_PARAGRAPH.JUSTIFY,
-                    'LEFT': WD_ALIGN_PARAGRAPH.LEFT,
-                    'CENTER': WD_ALIGN_PARAGRAPH.CENTER,
-                    'RIGHT': WD_ALIGN_PARAGRAPH.RIGHT,
-                    'JUSTIFY': WD_ALIGN_PARAGRAPH.JUSTIFY,
-                    'BOTH': WD_ALIGN_PARAGRAPH.JUSTIFY,
-                    'None': WD_ALIGN_PARAGRAPH.LEFT,
+                    '0': WD_ALIGN_PARAGRAPH.LEFT, 'LEFT': WD_ALIGN_PARAGRAPH.LEFT,
+                    '1': WD_ALIGN_PARAGRAPH.CENTER, 'CENTER': WD_ALIGN_PARAGRAPH.CENTER,
+                    '2': WD_ALIGN_PARAGRAPH.RIGHT, 'RIGHT': WD_ALIGN_PARAGRAPH.RIGHT,
+                    '3': WD_ALIGN_PARAGRAPH.JUSTIFY, 'JUSTIFY': WD_ALIGN_PARAGRAPH.JUSTIFY,
+                    'BOTH': WD_ALIGN_PARAGRAPH.JUSTIFY, 'None': WD_ALIGN_PARAGRAPH.LEFT,
                 }
                 if tstyle.alignment.alignment in align_map:
                     pfmt.alignment = align_map[tstyle.alignment.alignment]
@@ -631,7 +715,6 @@ class DocumentAssembler:
             logger.debug(f"Could not apply style definition {style_id}: {e}")
 
     def _apply_run_formatting(self, run, run_info: Dict[str, Any]) -> None:
-        """Apply inline formatting to a run."""
         try:
             if run_info.get('bold'):
                 run.bold = True
@@ -641,15 +724,11 @@ class DocumentAssembler:
                 run.underline = True
         except Exception:
             pass
-    
+
     def _apply_direct_paragraph_formatting(
-        self,
-        new_para,
-        para: ParagraphContent,
-        template: TemplateProfile,
-        target_style_id: Optional[str],
+        self, new_para, para: ParagraphContent,
+        template: TemplateProfile, target_style_id: Optional[str],
     ) -> None:
-        """Apply direct formatting not covered by the style definition."""
         try:
             pfmt = new_para.paragraph_format
             if para.is_list_item:
@@ -667,22 +746,14 @@ class DocumentAssembler:
                     pfmt.alignment = align_map[para.alignment]
         except Exception:
             pass
-    
-    def _add_table(
-        self,
-        doc: Document,
-        table_info: Any,
-        style_map: Dict[str, str],
-        template: TemplateProfile,
-    ) -> None:
-        """Add a table to the document."""
+
+    def _add_table(self, doc: Document, table_info: Any,
+                   style_map: Dict[str, str], template: TemplateProfile) -> None:
         row_count = getattr(table_info, 'row_count', 0) or 2
         col_count = getattr(table_info, 'column_count', 0) or 2
-        
         try:
             table = doc.add_table(rows=row_count, cols=col_count)
             table.style = 'Table Grid'
-            
             rows = getattr(table_info, 'rows', None)
             if rows:
                 for i, row_data in enumerate(rows):
@@ -696,25 +767,16 @@ class DocumentAssembler:
                             row.cells[j].text = str(cell_text)
         except Exception as e:
             logger.warning(f"Could not add table: {e}")
-    
+
     def _copy_headers_footers(self, doc: Document, template: TemplateProfile) -> None:
-        """Copy headers and footers to a NEW document (legacy mode)."""
         try:
             if template.headers:
                 section = doc.sections[0]
                 if section.header is not None and template.headers.get('default'):
-                    header_para = section.header.paragraphs[0]
-                    header_para.text = template.headers.get('default', '')
-            
+                    section.header.paragraphs[0].text = template.headers.get('default', '')
             if template.footers:
                 section = doc.sections[0]
                 if section.footer is not None and template.footers.get('default'):
-                    footer_para = section.footer.paragraphs[0]
-                    footer_para.text = template.footers.get('default', '')
+                    section.footer.paragraphs[0].text = template.footers.get('default', '')
         except Exception as e:
             logger.warning(f"Could not copy headers/footers: {e}")
-
-
-# ──────────────────────────────────────────────
-# Remaining: _clear_body_content (removed)
-# ──────────────────────────────────────────────
