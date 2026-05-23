@@ -1,7 +1,7 @@
 """Formatting endpoints."""
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 
 from docx_formatter.api.models import DebugResponse, FormatResponse
 from docx_formatter.api.service import process_document, validate_file_extension

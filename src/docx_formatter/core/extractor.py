@@ -88,7 +88,7 @@ class DOCXExtractor:
     def extract_template_profile(self, docx_path: str) -> TemplateProfile:
         """
         Extract template profile from Document A (template).
-        
+
         Returns all style definitions, document settings, theme, headers/footers.
         """
         doc = Document(docx_path)
@@ -112,7 +112,7 @@ class DOCXExtractor:
     def extract_content_profile(self, docx_path: str) -> ContentProfile:
         """
         Extract content profile from Document B (raw content).
-        
+
         Returns paragraphs, tables, images with their current formatting.
         """
         doc = Document(docx_path)
@@ -602,7 +602,6 @@ class DOCXExtractor:
 
     def _detect_template_type(self, doc, profile: TemplateProfile) -> TemplateType:
         """Detect what kind of template this is."""
-        total_paragraphs = len(doc.paragraphs)
         text_paragraphs = sum(1 for p in doc.paragraphs if p.text.strip())
 
         # If mostly empty or only "Lorem ipsum" content -> style definitions

@@ -272,7 +272,7 @@ class DocumentAssembler:
 
     @staticmethod
     def _has_sect_pr(p_elem) -> bool:
-        pPr = p_elem.find(qn('w:pPr'))
+        pPr = p_elem.find(qn('w:pPr'))  # noqa: N806
         return pPr is not None and pPr.find(qn('w:sectPr')) is not None
 
     def _classify_section(self, doc: Document, start: int, end: int) -> str:
@@ -380,7 +380,7 @@ class DocumentAssembler:
         if c_para.runs:
             for run_info in c_para.runs:
                 new_run = OxmlElement('w:r')
-                rPr = OxmlElement('w:rPr')
+                rPr = OxmlElement('w:rPr')  # noqa: N806
                 if run_info.get('bold'):
                     rPr.append(OxmlElement('w:b'))
                 if run_info.get('italic'):
@@ -424,7 +424,7 @@ class DocumentAssembler:
         # Find the last non-structural paragraph before the final sectPr
         for child in reversed(list(body_elem)):
             if child.tag == qn('w:p'):
-                pPr = child.find(qn('w:pPr'))
+                pPr = child.find(qn('w:pPr'))  # noqa: N806
                 if pPr is not None and pPr.find(qn('w:sectPr')) is not None:
                     continue
                 insert_after = child
@@ -446,9 +446,9 @@ class DocumentAssembler:
 
     def _new_paragraph_element(self, para: ParagraphContent, style_id: Optional[str]):
         p = OxmlElement('w:p')
-        pPr = OxmlElement('w:pPr')
+        pPr = OxmlElement('w:pPr')  # noqa: N806
         if style_id:
-            pStyle = OxmlElement('w:pStyle')
+            pStyle = OxmlElement('w:pStyle')  # noqa: N806
             pStyle.set(qn('w:val'), style_id)
             pPr.append(pStyle)
         p.append(pPr)
@@ -457,7 +457,7 @@ class DocumentAssembler:
             for run_info in para.runs:
                 r = OxmlElement('w:r')
                 if run_info.get('bold') or run_info.get('italic') or run_info.get('underline'):
-                    rPr = OxmlElement('w:rPr')
+                    rPr = OxmlElement('w:rPr')  # noqa: N806
                     if run_info.get('bold'):
                         rPr.append(OxmlElement('w:b'))
                     if run_info.get('italic'):
