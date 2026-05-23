@@ -1,7 +1,5 @@
 """Formatting endpoints."""
 
-import tempfile
-from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse

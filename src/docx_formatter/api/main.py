@@ -1,8 +1,6 @@
 """API application entrypoint."""
 
 from contextlib import asynccontextmanager
-import tempfile
-from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

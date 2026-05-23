@@ -5,13 +5,11 @@ Orchestrates extraction, matching, and assembly.
 
 import logging
 import time
-from pathlib import Path
-from typing import Optional
 
 from .extractor import DOCXExtractor
 from .matcher import StyleMatchingEngine
 from .assembler import DocumentAssembler
-from .types import TemplateProfile, ContentProfile, ProcessingResult
+from .types import ProcessingResult
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +129,7 @@ class FormatPipeline:
             for path in [template_path, content_path, output_path]:
                 try:
                     os.unlink(path)
-                except:
+                except OSError:
                     pass
 
 

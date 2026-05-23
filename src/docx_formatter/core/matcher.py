@@ -71,7 +71,6 @@ class StyleMatchingEngine:
                 matched_source.add(para.style_name)
 
         # Pass 3: Semantic role matching for ALL paragraphs (including Normal-styled)
-        semantic_matched_roles = set()  # Track which roles we've already found a match for
         for para in content.paragraphs:
             # If paragraph has a specific style that's already matched, skip
             if para.style_name and para.style_name in matched_source:

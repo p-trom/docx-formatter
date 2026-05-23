@@ -8,9 +8,7 @@ from pathlib import Path
 from docx_formatter.core import (
     FormatPipeline, DOCXExtractor, StyleMatchingEngine, DocumentAssembler
 )
-from docx_formatter.core.types import (
-    TemplateType, SemanticRole, ProcessingResult, ParagraphContent
-)
+from docx_formatter.core.types import SemanticRole
 
 
 FIXTURES_DIR = Path(__file__).parent / 'fixtures'
@@ -74,7 +72,6 @@ class TestStyleMatchingEngine:
         assert len(matches) > 0
         
         # Check for exact matches
-        exact_matches = [m for m in matches if m.matcher_type == 'exact']
         # Content may or may not have exact matches depending on style naming
         assert isinstance(matches[0].confidence, float)
         assert 0 <= matches[0].confidence <= 1
@@ -185,13 +182,6 @@ class TestSemanticRoleDetection:
     def test_heading_detection(self):
         """Detect heading paragraphs."""
         extractor = DOCXExtractor()
-        
-        para = ParagraphContent(
-            text="Project Scope",
-            style_name="Heading 1",
-            has_bold=True,
-            max_font_size=16,
-        )
         
         role = extractor._estimate_role("Project Scope", True, 16, "Heading 1")
         assert role == SemanticRole.HEADING_1

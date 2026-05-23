@@ -4,8 +4,7 @@ Core data models for DOCX processing.
 
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Optional, List, Dict, Any, Tuple
-from decimal import Decimal
+from typing import Optional, List, Dict, Any
 
 
 class TemplateType(Enum):

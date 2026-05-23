@@ -2,7 +2,7 @@
 DOCX Formatter - Core engine for intelligent document formatting.
 """
 
-from .types import *
+from .types import *  # noqa: F403
 from .extractor import DOCXExtractor
 from .matcher import StyleMatchingEngine
 from .assembler import DocumentAssembler

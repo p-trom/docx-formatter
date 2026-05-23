@@ -11,11 +11,8 @@ Strategy when template_docx_path is provided:
     4. Append unmatched content paras, and clear unused body-text placeholders.
 """
 
-import copy
 import logging
 from typing import Dict, List, Optional, Any
-from collections import defaultdict
-from pathlib import Path
 
 from docx import Document
 from docx.shared import Pt, Inches, RGBColor
@@ -26,7 +23,7 @@ from docx.oxml import OxmlElement
 from .types import (
     TemplateProfile, ContentProfile, ParagraphContent,
     ParagraphStyle, StyleMatch, ProcessingResult,
-    SemanticRole, FontStyle
+    SemanticRole
 )
 
 logger = logging.getLogger(__name__)
@@ -559,7 +556,7 @@ class DocumentAssembler:
                 if tstyle.font.color and not tstyle.font.color.startswith('theme:'):
                     try:
                         font.color.rgb = RGBColor.from_string(tstyle.font.color)
-                    except:
+                    except Exception:
                         pass
             pfmt = docx_style.paragraph_format
             if tstyle.alignment and tstyle.alignment.alignment:

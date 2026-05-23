@@ -4,25 +4,19 @@ DOCX Extractor - parses both template and content documents into profiles.
 
 import zipfile
 import xml.etree.ElementTree as ET
-from pathlib import Path
-from typing import Optional, Dict, List, Any, Tuple
+from typing import Optional, Dict, List, Any
 import logging
 
 # Try importing python-docx
 try:
     from docx import Document
-    from docx.shared import Pt, Inches, RGBColor
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
     DOCX_AVAILABLE = True
 except ImportError:
     DOCX_AVAILABLE = False
 
 from .types import (
-    FontStyle, ParagraphSpacing, ParagraphStyle, CharacterStyle,
-    TableStyle, DocumentDefaults, Theme, HeaderFooter, SectionBreak,
-    TemplateProfile, ContentProfile, ParagraphContent, TableContent,
-    SemanticRole, TemplateType, ParagraphAlignment, ParagraphIndentation,
-    ParagraphBorder
+    FontStyle, ParagraphSpacing, ParagraphStyle, DocumentDefaults, TemplateProfile, ContentProfile, ParagraphContent, TableContent,
+    SemanticRole, TemplateType, ParagraphAlignment, ParagraphIndentation
 )
 
 logger = logging.getLogger(__name__)
@@ -222,7 +216,6 @@ class DOCXExtractor:
         
         # Heading levels (only 1-4 available)
         for level in [1, 2, 3, 4]:
-            lvl_str = str(level)
             if f'heading {level}' in n or f'heading{level}' in n or f'heading{level}' in s:
                 return [SemanticRole.HEADING_1, SemanticRole.HEADING_2,
                         SemanticRole.HEADING_3, SemanticRole.HEADING_4][level-1]
