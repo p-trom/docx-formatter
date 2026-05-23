@@ -88,11 +88,17 @@
                     <input type="url" id="apiUrl" value="https://docx-formatter-api.onrender.com" placeholder="https://your-api.com">
                 </div>
 
-                <!-- Submit Button -->
-                <button class="submit-btn" id="submitBtn" disabled>
-                    <span class="btn-text">Format Document</span>
-                    <span class="btn-spinner hidden"></span>
-                </button>
+                <!-- Submit Buttons -->
+                <div class="button-group">
+                    <button class="submit-btn" id="submitBtn" disabled>
+                        <span class="btn-text">Format Document</span>
+                        <span class="btn-spinner hidden"></span>
+                    </button>
+                    <button class="debug-btn" id="debugBtn" disabled title="Preview style matching without downloading">
+                        <span class="btn-text">🔍 Debug</span>
+                        <span class="btn-spinner hidden"></span>
+                    </button>
+                </div>
 
                 <!-- Progress -->
                 <div class="progress hidden" id="progressSection">
@@ -120,7 +126,18 @@
                 </div>
             </div>
 
-            <!-- History -->
+                <!-- Debug Results -->
+                <div class="debug-results hidden" id="debugSection">
+                    <div class="debug-header">
+                        <h3>🔍 Style Matching Debug</h3>
+                        <button class="close-debug" id="closeDebug">×</button>
+                    </div>
+                    <div class="debug-summary" id="debugSummary"></div>
+                    <div class="debug-matches" id="debugMatches"></div>
+                    <div class="debug-unmatched hidden" id="debugUnmatched"></div>
+                </div>
+
+                <!-- History -->
             <div class="history-section" id="historySection">
                 <h3>Recent Formats</h3>
                 <div class="history-list" id="historyList">

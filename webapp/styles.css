@@ -238,6 +238,45 @@ header {
 }
 
 /* Submit Button */
+.button-group {
+    display: flex;
+    gap: 12px;
+}
+
+.button-group .submit-btn {
+    flex: 1;
+}
+
+.debug-btn {
+    padding: 16px 24px;
+    background: white;
+    color: var(--gray-700);
+    border: 2px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    font-size: 16px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    position: relative;
+    white-space: nowrap;
+}
+
+.debug-btn:hover:not(:disabled) {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: var(--primary-light);
+}
+
+.debug-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .submit-btn {
     width: 100%;
     padding: 16px;
@@ -478,6 +517,165 @@ header {
     padding: 40px;
     color: var(--gray-400);
     font-size: 14px;
+}
+
+/* Debug Results */
+.debug-results {
+    margin-top: 24px;
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.debug-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    background: var(--gray-50);
+    border-bottom: 1px solid var(--gray-200);
+}
+
+.debug-header h3 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--gray-800);
+}
+
+.close-debug {
+    background: none;
+    border: none;
+    color: var(--gray-400);
+    font-size: 24px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+    transition: color 0.15s ease;
+}
+
+.close-debug:hover {
+    color: var(--gray-700);
+}
+
+.debug-summary {
+    padding: 16px 20px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    border-bottom: 1px solid var(--gray-100);
+}
+
+.debug-stat {
+    text-align: center;
+    padding: 12px;
+    background: var(--gray-50);
+    border-radius: var(--radius-sm);
+}
+
+.debug-stat-value {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--primary);
+}
+
+.debug-stat-label {
+    font-size: 12px;
+    color: var(--gray-500);
+    margin-top: 4px;
+}
+
+.debug-matches {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.debug-match-item {
+    display: grid;
+    grid-template-columns: 80px 1fr 1fr 100px;
+    gap: 12px;
+    align-items: center;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--gray-100);
+    font-size: 13px;
+}
+
+.debug-match-item:last-child {
+    border-bottom: none;
+}
+
+.debug-match-pass {
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    text-align: center;
+}
+
+.debug-match-pass.exact { background: #dbeafe; color: #1e40af; }
+.debug-match-pass.fuzzy { background: #fef3c7; color: #92400e; }
+.debug-match-pass.semantic { background: #d1fae5; color: #065f46; }
+.debug-match-pass.llm { background: #ede9fe; color: #5b21b6; }
+.debug-match-pass.heuristic { background: #f3f4f6; color: #374151; }
+
+.debug-match-style {
+    font-weight: 500;
+    color: var(--gray-800);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.debug-match-arrow {
+    color: var(--gray-400);
+    text-align: center;
+}
+
+.debug-match-confidence {
+    text-align: right;
+    font-weight: 600;
+}
+
+.debug-match-confidence.high { color: var(--success); }
+.debug-match-confidence.medium { color: var(--warning); }
+.debug-match-confidence.low { color: var(--error); }
+
+.debug-match-preview {
+    grid-column: 1 / -1;
+    color: var(--gray-500);
+    font-style: italic;
+    font-size: 12px;
+    margin-top: 2px;
+}
+
+.debug-unmatched {
+    padding: 16px 20px;
+    background: var(--error-light);
+    border-top: 1px solid rgba(220, 38, 38, 0.1);
+}
+
+.debug-unmatched h4 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--error);
+    margin-bottom: 8px;
+}
+
+.debug-unmatched-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.debug-unmatched-tag {
+    font-size: 12px;
+    padding: 4px 10px;
+    background: white;
+    border: 1px solid rgba(220, 38, 38, 0.2);
+    border-radius: 4px;
+    color: var(--error);
 }
 
 /* Footer */

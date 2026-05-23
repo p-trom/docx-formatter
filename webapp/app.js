@@ -22,6 +22,7 @@
     const outputName = document.getElementById('outputName');
     const apiUrl = document.getElementById('apiUrl');
     const submitBtn = document.getElementById('submitBtn');
+    const debugBtn = document.getElementById('debugBtn');
     const progressSection = document.getElementById('progressSection');
     const progressFill = document.getElementById('progressFill');
     const progressText = document.getElementById('progressText');
@@ -32,6 +33,13 @@
     const downloadLink = document.getElementById('downloadLink');
     const resetBtn = document.getElementById('resetBtn');
     const historyList = document.getElementById('historyList');
+
+    // Debug elements
+    const debugSection = document.getElementById('debugSection');
+    const debugSummary = document.getElementById('debugSummary');
+    const debugMatches = document.getElementById('debugMatches');
+    const debugUnmatched = document.getElementById('debugUnmatched');
+    const closeDebug = document.getElementById('closeDebug');
 
     // State
     let templateFile = null;
@@ -65,7 +73,9 @@
     }
 
     function updateSubmitButton() {
-        submitBtn.disabled = !templateFile || !contentFile || isProcessing;
+        const enabled = templateFile && contentFile && !isProcessing;
+        submitBtn.disabled = !enabled;
+        debugBtn.disabled = !enabled;
     }
 
     // ============================
@@ -281,6 +291,127 @@
         hide(progressSection);
         hide(errorSection);
         hide(successSection);
+        hide(debugSection);
+    }
+
+    // ============================
+    // Debug
+    // ============================
+
+    function getConfidenceClass(confidence) {
+        if (confidence >= 0.8) return 'high';
+        if (confidence >= 0.5) return 'medium';
+        return 'low';
+    }
+
+    function renderDebugSummary(data) {
+        const llmStatus = data.llm_available
+            ? (data.llm_used ? '✅ Used' : '⏭️ Skipped')
+            : '❌ Not configured';
+
+        debugSummary.innerHTML = `
+            <div class="debug-stat">
+                <div class="debug-stat-value">${data.template_styles_count}</div>
+                <div class="debug-stat-label">Template Styles</div>
+            </div>
+            <div class="debug-stat">
+                <div class="debug-stat-value">${data.content_paragraphs_count}</div>
+                <div class="debug-stat-label">Content Paragraphs</div>
+            </div>
+            <div class="debug-stat">
+                <div class="debug-stat-value">${data.matches.length}</div>
+                <div class="debug-stat-label">Matches</div>
+            </div>
+            <div class="debug-stat">
+                <div class="debug-stat-value">${data.unmatched_styles.length}</div>
+                <div class="debug-stat-label">Unmatched</div>
+            </div>
+            <div class="debug-stat">
+                <div class="debug-stat-value" style="font-size:14px">${llmStatus}</div>
+                <div class="debug-stat-label">LLM</div>
+            </div>
+        `;
+    }
+
+    function renderDebugMatches(matches) {
+        if (!matches.length) {
+            debugMatches.innerHTML = '<p style="padding:20px;text-align:center;color:var(--gray-400)">No matches found</p>';
+            return;
+        }
+
+        debugMatches.innerHTML = matches.map(m => `
+            <div class="debug-match-item">
+                <span class="debug-match-pass ${m.pass_name}">${m.pass_name}</span>
+                <span class="debug-match-style" title="${escapeHtml(m.source_style)}">${escapeHtml(m.source_style)}</span>
+                <span class="debug-match-arrow">→</span>
+                <span class="debug-match-style" title="${escapeHtml(m.target_style)}">${escapeHtml(m.target_style)}</span>
+                <span class="debug-match-confidence ${getConfidenceClass(m.confidence)}">${Math.round(m.confidence * 100)}%</span>
+                <span class="debug-match-preview">${escapeHtml(m.preview || '')}</span>
+            </div>
+        `).join('');
+    }
+
+    function renderDebugUnmatched(unmatched) {
+        if (!unmatched.length) {
+            hide(debugUnmatched);
+            return;
+        }
+        show(debugUnmatched);
+        debugUnmatched.innerHTML = `
+            <h4>⚠️ Unmatched Styles (${unmatched.length})</h4>
+            <div class="debug-unmatched-list">
+                ${unmatched.map(s => `<span class="debug-unmatched-tag">${escapeHtml(s)}</span>`).join('')}
+            </div>
+        `;
+    }
+
+    async function handleDebug() {
+        if (!templateFile || !contentFile || isProcessing) return;
+
+        isProcessing = true;
+        updateSubmitButton();
+        hide(errorSection);
+        hide(successSection);
+        hide(debugSection);
+        show(progressSection);
+        setProgress(30, 'Analyzing styles...');
+
+        const formData = new FormData();
+        formData.append('template', templateFile);
+        formData.append('content', contentFile);
+
+        try {
+            const baseUrl = apiUrl.value.replace(/\/$/, '');
+            setProgress(60, 'Running debug pipeline...');
+
+            const response = await fetch(`${baseUrl}/api/v1/format/template-upload/debug`, {
+                method: 'POST',
+                body: formData,
+            });
+
+            setProgress(90, 'Rendering results...');
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.detail?.message || errorData.detail || `Server error: ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            renderDebugSummary(data);
+            renderDebugMatches(data.matches);
+            renderDebugUnmatched(data.unmatched_styles);
+
+            show(debugSection);
+            hide(progressSection);
+            setProgress(0, '');
+
+        } catch (err) {
+            showError(err.message || 'Network error. Check API URL and try again.');
+        } finally {
+            isProcessing = false;
+            updateSubmitButton();
+        }
     }
 
     // ============================
@@ -301,7 +432,9 @@
     });
 
     submitBtn.addEventListener('click', handleSubmit);
+    debugBtn.addEventListener('click', handleDebug);
     resetBtn.addEventListener('click', resetForm);
+    closeDebug.addEventListener('click', () => hide(debugSection));
 
     // Load history on init
     renderHistory();
