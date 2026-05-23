@@ -100,6 +100,7 @@ Content DOCX ───┘
 | Frontend Hosting | Vercel (static) |
 | Tests | pytest |
 | Linting | ruff |
+| CI/CD | GitHub Actions |
 
 **No AI. No LLM calls. No API keys required.**
 
@@ -156,11 +157,11 @@ git clone https://github.com/p-trom/docx-formatter.git
 cd docx-formatter
 
 # Install dependencies
-uv pip install -r requirements.txt
-# or: pip install -r requirements.txt
+uv pip install -e ".[dev]"
+# or: pip install -e ".[dev]"
 
 # Run API
-PYTHONPATH=src uvicorn docx_formatter.api.main:app --reload
+uvicorn docx_formatter.api.main:app --reload
 
 # API docs: http://localhost:8000/docs
 ```
@@ -168,7 +169,7 @@ PYTHONPATH=src uvicorn docx_formatter.api.main:app --reload
 ### Run tests
 
 ```bash
-PYTHONPATH=src pytest --tb=short -q
+pytest -q
 ```
 
 Current status: **21 tests passing** (4 API integration + 17 core engine).

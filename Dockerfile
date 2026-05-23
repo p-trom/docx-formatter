@@ -13,8 +13,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy package files
+COPY pyproject.toml .
+COPY src/ ./src/
+
+# Install the package
+RUN pip install --no-cache-dir -e .
 
 # Production stage
 FROM python:3.12-slim
@@ -30,11 +34,11 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy application code
 COPY src/ ./src/
+COPY pyproject.toml .
 COPY start.sh ./
 RUN chmod +x start.sh
 
-# Set Python path
-ENV PYTHONPATH=/app/src
+# Set environment
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8000
 

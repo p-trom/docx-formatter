@@ -5,12 +5,10 @@ services:
     region: frankfurt
     plan: free
     branch: main
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -e .
     startCommand: |
-      PYTHONPATH=src python -m uvicorn docx_formatter.api.main:app --host 0.0.0.0 --port $PORT --workers 1 --access-log
+      python -m uvicorn docx_formatter.api.main:app --host 0.0.0.0 --port $PORT --workers 1 --access-log
     envVars:
-      - key: PYTHONPATH
-        value: src
       - key: PYTHONUNBUFFERED
         value: "1"
       - key: MAX_FILE_SIZE_MB
