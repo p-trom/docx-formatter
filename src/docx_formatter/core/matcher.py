@@ -77,14 +77,16 @@ class StyleMatchingEngine:
                 if para.style_name not in matched_source:
                     matches.append(match)
                     matched_source.add(para.style_name)
-                    self.last_log.match_logs.append(MatchLog(
-                        pass_name="exact",
-                        source_style=para.style_name,
-                        target_style=para.style_name,
-                        confidence=1.0,
-                        reason="Exact style ID match",
-                        paragraph_preview=para.text[:60],
-                    ))
+                    self.last_log.match_logs.append(
+                        MatchLog(
+                            pass_name="exact",
+                            source_style=para.style_name,
+                            target_style=para.style_name,
+                            confidence=1.0,
+                            reason="Exact style ID match",
+                            paragraph_preview=para.text[:60],
+                        )
+                    )
 
         # Pass 2: Fuzzy name matching for unmatched styles
         for para in content.paragraphs:
@@ -99,14 +101,16 @@ class StyleMatchingEngine:
             if best_match and best_match.confidence >= self.min_confidence:
                 matches.append(best_match)
                 matched_source.add(para.style_name)
-                self.last_log.match_logs.append(MatchLog(
-                    pass_name="fuzzy",
-                    source_style=best_match.source_style_id,
-                    target_style=best_match.target_style_id,
-                    confidence=best_match.confidence,
-                    reason=best_match.reason,
-                    paragraph_preview=para.text[:60],
-                ))
+                self.last_log.match_logs.append(
+                    MatchLog(
+                        pass_name="fuzzy",
+                        source_style=best_match.source_style_id,
+                        target_style=best_match.target_style_id,
+                        confidence=best_match.confidence,
+                        reason=best_match.reason,
+                        paragraph_preview=para.text[:60],
+                    )
+                )
 
         # Pass 3: Semantic role matching for ALL paragraphs (including Normal-styled)
         for para in content.paragraphs:
@@ -126,19 +130,22 @@ class StyleMatchingEngine:
                 if source_key not in matched_source:
                     matches.append(match)
                     matched_source.add(source_key)
-                    self.last_log.match_logs.append(MatchLog(
-                        pass_name="semantic",
-                        source_style=source_key,
-                        target_style=best_match.target_style_id,
-                        confidence=best_match.confidence,
-                        reason=best_match.reason,
-                        paragraph_preview=para.text[:60],
-                    ))
+                    self.last_log.match_logs.append(
+                        MatchLog(
+                            pass_name="semantic",
+                            source_style=source_key,
+                            target_style=best_match.target_style_id,
+                            confidence=best_match.confidence,
+                            reason=best_match.reason,
+                            paragraph_preview=para.text[:60],
+                        )
+                    )
 
         # Pass 4: LLM-based matching for anything still unmatched (if available)
         if self.llm_matcher and self.llm_matcher.is_available():
             unmatched_for_llm = [
-                p for p in content.paragraphs
+                p
+                for p in content.paragraphs
                 if (p.style_name and p.style_name not in matched_source)
                 or (not p.style_name and p.estimated_role == SemanticRole.UNKNOWN)
             ]
@@ -149,14 +156,18 @@ class StyleMatchingEngine:
                     if llm_match.source_style_id not in matched_source:
                         matches.append(llm_match)
                         matched_source.add(llm_match.source_style_id)
-                        self.last_log.match_logs.append(MatchLog(
-                            pass_name="llm",
-                            source_style=llm_match.source_style_id,
-                            target_style=llm_match.target_style_id,
-                            confidence=llm_match.confidence,
-                            reason=llm_match.reason,
-                            paragraph_preview=unmatched_for_llm[0].text[:60] if unmatched_for_llm else "",
-                        ))
+                        self.last_log.match_logs.append(
+                            MatchLog(
+                                pass_name="llm",
+                                source_style=llm_match.source_style_id,
+                                target_style=llm_match.target_style_id,
+                                confidence=llm_match.confidence,
+                                reason=llm_match.reason,
+                                paragraph_preview=unmatched_for_llm[0].text[:60]
+                                if unmatched_for_llm
+                                else "",
+                            )
+                        )
 
         # Pass 5: Content heuristic for anything still unmatched
         for para in content.paragraphs:
@@ -167,22 +178,26 @@ class StyleMatchingEngine:
             if best_match and best_match.confidence >= self.min_confidence:
                 source_key = para.style_name or f"__heuristic_{para.text[:20]}__"
                 if source_key not in matched_source:
-                    matches.append(StyleMatch(
-                        source_style_id=source_key,
-                        target_style_id=best_match.target_style_id,
-                        confidence=best_match.confidence,
-                        reason=best_match.reason,
-                        matcher_type=best_match.matcher_type,
-                    ))
+                    matches.append(
+                        StyleMatch(
+                            source_style_id=source_key,
+                            target_style_id=best_match.target_style_id,
+                            confidence=best_match.confidence,
+                            reason=best_match.reason,
+                            matcher_type=best_match.matcher_type,
+                        )
+                    )
                     matched_source.add(source_key)
-                    self.last_log.match_logs.append(MatchLog(
-                        pass_name="heuristic",
-                        source_style=source_key,
-                        target_style=best_match.target_style_id,
-                        confidence=best_match.confidence,
-                        reason=best_match.reason,
-                        paragraph_preview=para.text[:60],
-                    ))
+                    self.last_log.match_logs.append(
+                        MatchLog(
+                            pass_name="heuristic",
+                            source_style=source_key,
+                            target_style=best_match.target_style_id,
+                            confidence=best_match.confidence,
+                            reason=best_match.reason,
+                            paragraph_preview=para.text[:60],
+                        )
+                    )
 
         # Build final style mapping with deduplication
         final_map = {}
@@ -203,8 +218,7 @@ class StyleMatchingEngine:
         return result
 
     def _fuzzy_match_style(
-        self, source_style_name: str,
-        template_styles: Dict[str, ParagraphStyle]
+        self, source_style_name: str, template_styles: Dict[str, ParagraphStyle]
     ) -> Optional[StyleMatch]:
         """Find best matching template style by fuzzy string comparison."""
         best_ratio = 0.0
@@ -216,7 +230,9 @@ class StyleMatchingEngine:
             target_clean = style_id.lower().replace(" ", "").replace("-", "").replace("_", "")
             ratio_id = SequenceMatcher(None, source_clean, target_clean).ratio()
 
-            target_name_clean = tstyle.name.lower().replace(" ", "").replace("-", "").replace("_", "")
+            target_name_clean = (
+                tstyle.name.lower().replace(" ", "").replace("-", "").replace("_", "")
+            )
             ratio_name = SequenceMatcher(None, source_clean, target_name_clean).ratio()
 
             ratio = max(ratio_id, ratio_name)
@@ -235,7 +251,9 @@ class StyleMatchingEngine:
             )
         return None
 
-    def _semantic_match(self, para: ParagraphContent, template: TemplateProfile) -> Optional[StyleMatch]:
+    def _semantic_match(
+        self, para: ParagraphContent, template: TemplateProfile
+    ) -> Optional[StyleMatch]:
         """Match based on semantic role and content heuristics."""
         content_role = para.estimated_role
 
@@ -300,8 +318,9 @@ class StyleMatchingEngine:
 
         return SemanticRole.BODY_TEXT
 
-    def _content_heuristic_match(self, para: ParagraphContent,
-                                  template: TemplateProfile) -> Optional[StyleMatch]:
+    def _content_heuristic_match(
+        self, para: ParagraphContent, template: TemplateProfile
+    ) -> Optional[StyleMatch]:
         """
         Heuristic matching based on content properties vs template style properties.
         """

@@ -53,9 +53,7 @@ def _build_prompt(template: TemplateProfile, unmatched_paras: List[ParagraphCont
         if style.font.italic:
             props.append("italic")
         props_str = ", ".join(props) if props else "no special props"
-        styles_summary.append(
-            f"  - {sid} (name='{style.name}', role={role}, {props_str})"
-        )
+        styles_summary.append(f"  - {sid} (name='{style.name}', role={role}, {props_str})")
 
     # Content paragraphs summary (limit to avoid token overflow)
     paras_summary = []
@@ -178,13 +176,15 @@ class LLMStyleMatcher:
 
             key = content_style
             if key not in seen:
-                matches.append(StyleMatch(
-                    source_style_id=content_style,
-                    target_style_id=template_id,
-                    confidence=min(confidence, 0.95),
-                    reason=reason,
-                    matcher_type="llm",
-                ))
+                matches.append(
+                    StyleMatch(
+                        source_style_id=content_style,
+                        target_style_id=template_id,
+                        confidence=min(confidence, 0.95),
+                        reason=reason,
+                        matcher_type="llm",
+                    )
+                )
                 seen.add(key)
 
         logger.info(f"LLM matcher produced {len(matches)} matches")

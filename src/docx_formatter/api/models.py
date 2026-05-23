@@ -12,7 +12,9 @@ class FormatResponse(BaseModel):
 
     success: bool = Field(..., description="Whether formatting succeeded")
     file_name: str = Field(..., description="Name of the output file")
-    content_type: str = Field("application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    content_type: str = Field(
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
     warnings: list[str] = Field(default_factory=list, description="Non-fatal warnings")
     processing_time_ms: Optional[int] = Field(None, description="Processing time in milliseconds")
 

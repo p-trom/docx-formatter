@@ -42,20 +42,32 @@ def test_format_upload_success(client, template_name, content_name):
     """Test successful formatting with fixtures."""
     fixtures_dir = __file__.replace("test_api.py", "fixtures/")
 
-    with open(f"{fixtures_dir}{template_name}", "rb") as t, open(
-        f"{fixtures_dir}{content_name}", "rb"
-    ) as c:
+    with (
+        open(f"{fixtures_dir}{template_name}", "rb") as t,
+        open(f"{fixtures_dir}{content_name}", "rb") as c,
+    ):
         response = client.post(
             "/api/v1/format/template-upload",
             files={
-                "template": (template_name, t, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
-                "content": (content_name, c, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+                "template": (
+                    template_name,
+                    t,
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                ),
+                "content": (
+                    content_name,
+                    c,
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                ),
             },
             data={"output_filename": "output.docx"},
         )
 
     assert response.status_code == 200, response.text
-    assert response.headers["content-type"] == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    assert (
+        response.headers["content-type"]
+        == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
     assert response.headers["content-disposition"].startswith("attachment")
     assert len(response.content) > 1000  # DOCX is a ZIP, should be > 1KB
 
@@ -64,14 +76,23 @@ def test_format_upload_custom_filename(client):
     """Test with custom output filename."""
     fixtures_dir = __file__.replace("test_api.py", "fixtures/")
 
-    with open(f"{fixtures_dir}template_offer.docx", "rb") as t, open(
-        f"{fixtures_dir}content_offer.docx", "rb"
-    ) as c:
+    with (
+        open(f"{fixtures_dir}template_offer.docx", "rb") as t,
+        open(f"{fixtures_dir}content_offer.docx", "rb") as c,
+    ):
         response = client.post(
             "/api/v1/format/template-upload",
             files={
-                "template": ("template_offer.docx", t, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
-                "content": ("content_offer.docx", c, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+                "template": (
+                    "template_offer.docx",
+                    t,
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                ),
+                "content": (
+                    "content_offer.docx",
+                    c,
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                ),
             },
             data={"output_filename": "my_offer.docx"},
         )
@@ -84,14 +105,23 @@ def test_format_upload_debug(client):
     """Test debug endpoint returns matching logs."""
     fixtures_dir = __file__.replace("test_api.py", "fixtures/")
 
-    with open(f"{fixtures_dir}template_offer.docx", "rb") as t, open(
-        f"{fixtures_dir}content_offer.docx", "rb"
-    ) as c:
+    with (
+        open(f"{fixtures_dir}template_offer.docx", "rb") as t,
+        open(f"{fixtures_dir}content_offer.docx", "rb") as c,
+    ):
         response = client.post(
             "/api/v1/format/template-upload/debug",
             files={
-                "template": ("template_offer.docx", t, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
-                "content": ("content_offer.docx", c, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+                "template": (
+                    "template_offer.docx",
+                    t,
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                ),
+                "content": (
+                    "content_offer.docx",
+                    c,
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                ),
             },
         )
 

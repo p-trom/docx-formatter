@@ -19,6 +19,7 @@ def cleanup_temp_files():
                     path.unlink()
                 elif path.is_dir():
                     import shutil
+
                     shutil.rmtree(path)
             except OSError:
                 pass

@@ -14,7 +14,7 @@ from docx_formatter.core import (
 )
 from docx_formatter.core.types import SemanticRole
 
-FIXTURES_DIR = Path(__file__).parent / 'fixtures'
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
 class TestDOCXExtractor:
@@ -23,21 +23,21 @@ class TestDOCXExtractor:
     def test_extract_template_offer(self):
         """Extract template profile from offer template."""
         extractor = DOCXExtractor()
-        template_path = FIXTURES_DIR / 'template_offer.docx'
+        template_path = FIXTURES_DIR / "template_offer.docx"
 
         profile = extractor.extract_template_profile(str(template_path))
 
         assert profile is not None
         # Should find our custom styles
-        assert 'OfferTitle' in profile.paragraph_styles or any(
-            'offer' in s.name.lower() or 'title' in s.name.lower()
+        assert "OfferTitle" in profile.paragraph_styles or any(
+            "offer" in s.name.lower() or "title" in s.name.lower()
             for s in profile.paragraph_styles.values()
         )
 
     def test_extract_content_offer(self):
         """Extract content profile from raw offer content."""
         extractor = DOCXExtractor()
-        content_path = FIXTURES_DIR / 'content_offer.docx'
+        content_path = FIXTURES_DIR / "content_offer.docx"
 
         profile = extractor.extract_content_profile(str(content_path))
 
@@ -49,7 +49,7 @@ class TestDOCXExtractor:
     def test_extract_cv_template(self):
         """Extract CV template profile."""
         extractor = DOCXExtractor()
-        template_path = FIXTURES_DIR / 'template_cv.docx'
+        template_path = FIXTURES_DIR / "template_cv.docx"
 
         profile = extractor.extract_template_profile(str(template_path))
 
@@ -66,8 +66,8 @@ class TestStyleMatchingEngine:
         matcher = StyleMatchingEngine()
 
         extractor = DOCXExtractor()
-        template = extractor.extract_template_profile(str(FIXTURES_DIR / 'template_offer.docx'))
-        content = extractor.extract_content_profile(str(FIXTURES_DIR / 'content_offer.docx'))
+        template = extractor.extract_template_profile(str(FIXTURES_DIR / "template_offer.docx"))
+        content = extractor.extract_content_profile(str(FIXTURES_DIR / "content_offer.docx"))
 
         matches = matcher.match_all(template, content)
 
@@ -84,8 +84,8 @@ class TestStyleMatchingEngine:
         matcher = StyleMatchingEngine()
 
         extractor = DOCXExtractor()
-        template = extractor.extract_template_profile(str(FIXTURES_DIR / 'template_cv.docx'))
-        content = extractor.extract_content_profile(str(FIXTURES_DIR / 'content_cv.docx'))
+        template = extractor.extract_template_profile(str(FIXTURES_DIR / "template_cv.docx"))
+        content = extractor.extract_content_profile(str(FIXTURES_DIR / "content_cv.docx"))
 
         matches = matcher.match_all(template, content)
 
@@ -102,11 +102,11 @@ class TestDocumentAssembler:
         matcher = StyleMatchingEngine()
         assembler = DocumentAssembler()
 
-        template = extractor.extract_template_profile(str(FIXTURES_DIR / 'template_offer.docx'))
-        content = extractor.extract_content_profile(str(FIXTURES_DIR / 'content_offer.docx'))
+        template = extractor.extract_template_profile(str(FIXTURES_DIR / "template_offer.docx"))
+        content = extractor.extract_content_profile(str(FIXTURES_DIR / "content_offer.docx"))
         matches = matcher.match_all(template, content)
 
-        output_path = tmp_path / 'output_offer.docx'
+        output_path = tmp_path / "output_offer.docx"
         result = assembler.assemble(template, content, matches, str(output_path))
 
         assert result.success
@@ -119,11 +119,11 @@ class TestDocumentAssembler:
         matcher = StyleMatchingEngine()
         assembler = DocumentAssembler()
 
-        template = extractor.extract_template_profile(str(FIXTURES_DIR / 'template_cv.docx'))
-        content = extractor.extract_content_profile(str(FIXTURES_DIR / 'content_cv.docx'))
+        template = extractor.extract_template_profile(str(FIXTURES_DIR / "template_cv.docx"))
+        content = extractor.extract_content_profile(str(FIXTURES_DIR / "content_cv.docx"))
         matches = matcher.match_all(template, content)
 
-        output_path = tmp_path / 'output_cv.docx'
+        output_path = tmp_path / "output_cv.docx"
         result = assembler.assemble(template, content, matches, str(output_path))
 
         assert result.success
@@ -137,10 +137,10 @@ class TestFormatPipeline:
         """Full pipeline: template + content -> output."""
         pipeline = FormatPipeline()
 
-        output_path = tmp_path / 'pipeline_output.docx'
+        output_path = tmp_path / "pipeline_output.docx"
         result = pipeline.process(
-            template_path=str(FIXTURES_DIR / 'template_offer.docx'),
-            content_path=str(FIXTURES_DIR / 'content_offer.docx'),
+            template_path=str(FIXTURES_DIR / "template_offer.docx"),
+            content_path=str(FIXTURES_DIR / "content_offer.docx"),
             output_path=str(output_path),
         )
 
@@ -153,10 +153,10 @@ class TestFormatPipeline:
         """Full CV pipeline."""
         pipeline = FormatPipeline()
 
-        output_path = tmp_path / 'pipeline_cv.docx'
+        output_path = tmp_path / "pipeline_cv.docx"
         result = pipeline.process(
-            template_path=str(FIXTURES_DIR / 'template_cv.docx'),
-            content_path=str(FIXTURES_DIR / 'content_cv.docx'),
+            template_path=str(FIXTURES_DIR / "template_cv.docx"),
+            content_path=str(FIXTURES_DIR / "content_cv.docx"),
             output_path=str(output_path),
         )
 
@@ -167,9 +167,9 @@ class TestFormatPipeline:
         """Process documents from bytes."""
         pipeline = FormatPipeline()
 
-        with open(FIXTURES_DIR / 'template_offer.docx', 'rb') as f:
+        with open(FIXTURES_DIR / "template_offer.docx", "rb") as f:
             template_bytes = f.read()
-        with open(FIXTURES_DIR / 'content_offer.docx', 'rb') as f:
+        with open(FIXTURES_DIR / "content_offer.docx", "rb") as f:
             content_bytes = f.read()
 
         result = pipeline.process_files(template_bytes, content_bytes)
@@ -219,9 +219,9 @@ class TestErrorHandling:
         pipeline = FormatPipeline()
 
         result = pipeline.process(
-            template_path=str(tmp_path / 'nonexistent.docx'),
-            content_path=str(tmp_path / 'nonexistent2.docx'),
-            output_path=str(tmp_path / 'output.docx'),
+            template_path=str(tmp_path / "nonexistent.docx"),
+            content_path=str(tmp_path / "nonexistent2.docx"),
+            output_path=str(tmp_path / "output.docx"),
         )
 
         # Pipeline returns error result instead of raising
@@ -230,15 +230,15 @@ class TestErrorHandling:
 
     def test_invalid_file(self, tmp_path):
         """Handle invalid file gracefully."""
-        bad_file = tmp_path / 'bad.docx'
-        bad_file.write_text('not a docx')
+        bad_file = tmp_path / "bad.docx"
+        bad_file.write_text("not a docx")
 
         pipeline = FormatPipeline()
 
         result = pipeline.process(
             template_path=str(bad_file),
             content_path=str(bad_file),
-            output_path=str(tmp_path / 'output.docx'),
+            output_path=str(tmp_path / "output.docx"),
         )
 
         # Pipeline returns error result instead of raising
@@ -246,5 +246,5 @@ class TestErrorHandling:
         assert len(result.warnings) > 0
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v', '--tb=short'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v", "--tb=short"])

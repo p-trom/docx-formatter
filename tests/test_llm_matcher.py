@@ -46,11 +46,13 @@ class TestLLMStyleMatcher:
         # Setup mock response
         mock_response = Mock()
         mock_response.json.return_value = {
-            "choices": [{
-                "message": {
-                    "content": '[{"content_style_name": "CustomStyle", "template_style_id": "Heading1", "confidence": 0.92, "reason": "Bold heading text"}]'
+            "choices": [
+                {
+                    "message": {
+                        "content": '[{"content_style_name": "CustomStyle", "template_style_id": "Heading1", "confidence": 0.92, "reason": "Bold heading text"}]'
+                    }
                 }
-            }]
+            ]
         }
         mock_response.raise_for_status = Mock()
 
@@ -100,11 +102,13 @@ class TestLLMStyleMatcher:
         """Invalid style IDs fall back to Normal."""
         mock_response = Mock()
         mock_response.json.return_value = {
-            "choices": [{
-                "message": {
-                    "content": '[{"content_style_name": "Unknown", "template_style_id": "NonExistent", "confidence": 0.8, "reason": "test"}]'
+            "choices": [
+                {
+                    "message": {
+                        "content": '[{"content_style_name": "Unknown", "template_style_id": "NonExistent", "confidence": 0.8, "reason": "test"}]'
+                    }
                 }
-            }]
+            ]
         }
         mock_response.raise_for_status = Mock()
 

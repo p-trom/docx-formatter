@@ -97,26 +97,40 @@ class DocumentAssembler:
         # Split content into ordered queues, respecting style mappings
         heading_style_ids = set()
         for sid, tstyle in template.paragraph_styles.items():
-            if tstyle.semantic_role in (SemanticRole.TITLE, SemanticRole.HEADING_1,
-                                        SemanticRole.HEADING_2, SemanticRole.HEADING_3,
-                                        SemanticRole.HEADING_4):
+            if tstyle.semantic_role in (
+                SemanticRole.TITLE,
+                SemanticRole.HEADING_1,
+                SemanticRole.HEADING_2,
+                SemanticRole.HEADING_3,
+                SemanticRole.HEADING_4,
+            ):
                 heading_style_ids.add(sid)
 
         content_headings = []
         content_body = []
         for p in content.paragraphs:
             # Is this content's style mapped to a heading?
-            mapped_to_heading = (p.style_name and p.style_name in style_map
-                                 and style_map[p.style_name] in heading_style_ids)
+            mapped_to_heading = (
+                p.style_name
+                and p.style_name in style_map
+                and style_map[p.style_name] in heading_style_ids
+            )
             # Is this explicitly a heading style?
             style_is_heading = p.style_name and "heading" in p.style_name.lower()
             # Heuristic role
             role = self._resolve_content_role(p)
 
-            if mapped_to_heading or style_is_heading or role in (
-                SemanticRole.TITLE, SemanticRole.HEADING_1,
-                SemanticRole.HEADING_2, SemanticRole.HEADING_3,
-                SemanticRole.HEADING_4,
+            if (
+                mapped_to_heading
+                or style_is_heading
+                or role
+                in (
+                    SemanticRole.TITLE,
+                    SemanticRole.HEADING_1,
+                    SemanticRole.HEADING_2,
+                    SemanticRole.HEADING_3,
+                    SemanticRole.HEADING_4,
+                )
             ):
                 content_headings.append(p)
             else:
@@ -146,14 +160,16 @@ class DocumentAssembler:
                         self._replace_para_text_keep_structure(
                             doc.paragraphs[t_idx]._element,
                             content_headings[h_idx],
-                            template, style_map,
+                            template,
+                            style_map,
                         )
                         h_idx += 1
                     elif slot == "body" and b_idx < len(content_body):
                         self._replace_para_text_keep_structure(
                             doc.paragraphs[t_idx]._element,
                             content_body[b_idx],
-                            template, style_map,
+                            template,
+                            style_map,
                         )
                         b_idx += 1
                     else:
@@ -167,7 +183,8 @@ class DocumentAssembler:
                         self._replace_para_text_keep_structure(
                             doc.paragraphs[t_idx]._element,
                             content_headings[h_idx],
-                            template, style_map,
+                            template,
+                            style_map,
                         )
                         h_idx += 1
                         cover_filled = True
@@ -181,15 +198,24 @@ class DocumentAssembler:
                             self._clear_para_runs(doc.paragraphs[t_idx]._element)
 
         # Pass 3: merge remaining headings + body text in original order and insert
-        remaining = self._merge_remaining(content.paragraphs, content_headings[h_idx:], content_body[b_idx:])
+        remaining = self._merge_remaining(
+            content.paragraphs, content_headings[h_idx:], content_body[b_idx:]
+        )
         if remaining and last_content_section_end is not None:
             self._insert_overflow_before_section_break(
-                doc, last_content_section_end, remaining, template, style_map,
+                doc,
+                last_content_section_end,
+                remaining,
+                template,
+                style_map,
             )
 
-    def _merge_remaining(self, all_paras: List[ParagraphContent],
-                         remaining_headings: List[ParagraphContent],
-                         remaining_body: List[ParagraphContent]) -> List[ParagraphContent]:
+    def _merge_remaining(
+        self,
+        all_paras: List[ParagraphContent],
+        remaining_headings: List[ParagraphContent],
+        remaining_body: List[ParagraphContent],
+    ) -> List[ParagraphContent]:
         """Reconstruct remaining paragraphs in original document order."""
         remaining_set = set(id(p) for p in remaining_headings + remaining_body)
         return [p for p in all_paras if id(p) in remaining_set]
@@ -250,18 +276,15 @@ class DocumentAssembler:
                 return SemanticRole.HEADING_2
             if para.has_bold and len(text) < 80:
                 return SemanticRole.HEADING_2
-        if para.is_list_item or text.startswith(('•', '●', '○', '▪', '-')):
+        if para.is_list_item or text.startswith(("•", "●", "○", "▪", "-")):
             return SemanticRole.LIST_BULLET
-        if text[:3].strip().endswith('.') and text[:2].strip()[0].isdigit():
+        if text[:3].strip().endswith(".") and text[:2].strip()[0].isdigit():
             return SemanticRole.LIST_NUMBER
         return SemanticRole.BODY_TEXT
 
     def _get_section_boundaries(self, doc: Document) -> List[tuple]:
         """Return list of (start_para_index, end_para_index) for each section."""
-        breaks = [
-            i for i, p in enumerate(doc.paragraphs)
-            if self._has_sect_pr(p._element)
-        ]
+        breaks = [i for i, p in enumerate(doc.paragraphs) if self._has_sect_pr(p._element)]
         boundaries = []
         start = 0
         for b in breaks:
@@ -272,8 +295,8 @@ class DocumentAssembler:
 
     @staticmethod
     def _has_sect_pr(p_elem) -> bool:
-        pPr = p_elem.find(qn('w:pPr'))  # noqa: N806
-        return pPr is not None and pPr.find(qn('w:sectPr')) is not None
+        pPr = p_elem.find(qn("w:pPr"))  # noqa: N806
+        return pPr is not None and pPr.find(qn("w:sectPr")) is not None
 
     def _classify_section(self, doc: Document, start: int, end: int) -> str:
         """Classify section role from paragraph style names.
@@ -289,9 +312,15 @@ class DocumentAssembler:
             return "frontmatter"
         if "cap cover" in styles:
             return "cover"
-        content_keywords = ("heading 1", "heading1", "body text",
-                            "executive summary", "chapter number", "chapter title",
-                            "appendix number")
+        content_keywords = (
+            "heading 1",
+            "heading1",
+            "body text",
+            "executive summary",
+            "chapter number",
+            "chapter title",
+            "appendix number",
+        )
         if any(kw in s for s in styles for kw in content_keywords):
             return "content"
         return "structural_else"
@@ -317,9 +346,17 @@ class DocumentAssembler:
             return None
 
         # Headings
-        for kw in ("heading 1", "heading1", "heading 2", "heading2",
-                   "heading 3", "heading3", "heading 4", "heading4",
-                   "executive summary/prelims heading"):
+        for kw in (
+            "heading 1",
+            "heading1",
+            "heading 2",
+            "heading2",
+            "heading 3",
+            "heading3",
+            "heading 4",
+            "heading4",
+            "executive summary/prelims heading",
+        ):
             if kw in s:
                 return "heading"
 
@@ -328,9 +365,16 @@ class DocumentAssembler:
             return "heading"
 
         # Body text styles
-        for kw in ("body text", "bodytext", "full out body text",
-                   "body numbered prelims", "body annexes",
-                   "bullets", "numbered bullets", "free numbering"):
+        for kw in (
+            "body text",
+            "bodytext",
+            "full out body text",
+            "body numbered prelims",
+            "body annexes",
+            "bullets",
+            "numbered bullets",
+            "free numbering",
+        ):
             if kw in s:
                 return "body"
 
@@ -349,8 +393,13 @@ class DocumentAssembler:
         result = []
         for p in paragraphs:
             role = self._resolve_content_role(p)
-            if role in (SemanticRole.TITLE, SemanticRole.HEADING_1, SemanticRole.HEADING_2,
-                        SemanticRole.HEADING_3, SemanticRole.HEADING_4):
+            if role in (
+                SemanticRole.TITLE,
+                SemanticRole.HEADING_1,
+                SemanticRole.HEADING_2,
+                SemanticRole.HEADING_3,
+                SemanticRole.HEADING_4,
+            ):
                 result.append(p)
         return result
 
@@ -359,8 +408,12 @@ class DocumentAssembler:
         result = []
         for p in paragraphs:
             role = self._resolve_content_role(p)
-            if role in (SemanticRole.BODY_TEXT, SemanticRole.LIST_BULLET,
-                        SemanticRole.LIST_NUMBER, SemanticRole.UNKNOWN):
+            if role in (
+                SemanticRole.BODY_TEXT,
+                SemanticRole.LIST_BULLET,
+                SemanticRole.LIST_NUMBER,
+                SemanticRole.UNKNOWN,
+            ):
                 result.append(p)
         return result
 
@@ -374,36 +427,36 @@ class DocumentAssembler:
         style_map: Dict[str, str],
     ) -> None:
         """Replace text in a template paragraph while keeping pPr (style, sectPr, etc.)."""
-        for run in list(t_para_element.findall(qn('w:r'))):
+        for run in list(t_para_element.findall(qn("w:r"))):
             t_para_element.remove(run)
 
         if c_para.runs:
             for run_info in c_para.runs:
-                new_run = OxmlElement('w:r')
-                rPr = OxmlElement('w:rPr')  # noqa: N806
-                if run_info.get('bold'):
-                    rPr.append(OxmlElement('w:b'))
-                if run_info.get('italic'):
-                    rPr.append(OxmlElement('w:i'))
-                if run_info.get('underline'):
-                    rPr.append(OxmlElement('w:u'))
+                new_run = OxmlElement("w:r")
+                rPr = OxmlElement("w:rPr")  # noqa: N806
+                if run_info.get("bold"):
+                    rPr.append(OxmlElement("w:b"))
+                if run_info.get("italic"):
+                    rPr.append(OxmlElement("w:i"))
+                if run_info.get("underline"):
+                    rPr.append(OxmlElement("w:u"))
                 if len(rPr) > 0:
                     new_run.append(rPr)
-                t_elem = OxmlElement('w:t')
-                t_elem.text = run_info.get('text', '')
+                t_elem = OxmlElement("w:t")
+                t_elem.text = run_info.get("text", "")
                 new_run.append(t_elem)
                 t_para_element.append(new_run)
         else:
-            new_run = OxmlElement('w:r')
-            t_elem = OxmlElement('w:t')
-            t_elem.text = c_para.text or ''
+            new_run = OxmlElement("w:r")
+            t_elem = OxmlElement("w:t")
+            t_elem.text = c_para.text or ""
             new_run.append(t_elem)
             t_para_element.append(new_run)
 
     @staticmethod
     def _clear_para_runs(p_elem) -> None:
         """Remove all runs from a paragraph (keeps pPr and sectPr intact)."""
-        for run in list(p_elem.findall(qn('w:r'))):
+        for run in list(p_elem.findall(qn("w:r"))):
             p_elem.remove(run)
 
     # ── Remaining content insertion ──────────────────────
@@ -423,13 +476,13 @@ class DocumentAssembler:
         insert_after = None
         # Find the last non-structural paragraph before the final sectPr
         for child in reversed(list(body_elem)):
-            if child.tag == qn('w:p'):
-                pPr = child.find(qn('w:pPr'))  # noqa: N806
-                if pPr is not None and pPr.find(qn('w:sectPr')) is not None:
+            if child.tag == qn("w:p"):
+                pPr = child.find(qn("w:pPr"))  # noqa: N806
+                if pPr is not None and pPr.find(qn("w:sectPr")) is not None:
                     continue
                 insert_after = child
                 break
-            elif child.tag == qn('w:tbl'):
+            elif child.tag == qn("w:tbl"):
                 # Tables count too
                 insert_after = child
                 break
@@ -445,34 +498,34 @@ class DocumentAssembler:
                 body_elem.append(p_elem)
 
     def _new_paragraph_element(self, para: ParagraphContent, style_id: Optional[str]):
-        p = OxmlElement('w:p')
-        pPr = OxmlElement('w:pPr')  # noqa: N806
+        p = OxmlElement("w:p")
+        pPr = OxmlElement("w:pPr")  # noqa: N806
         if style_id:
-            pStyle = OxmlElement('w:pStyle')  # noqa: N806
-            pStyle.set(qn('w:val'), style_id)
+            pStyle = OxmlElement("w:pStyle")  # noqa: N806
+            pStyle.set(qn("w:val"), style_id)
             pPr.append(pStyle)
         p.append(pPr)
 
         if para.runs:
             for run_info in para.runs:
-                r = OxmlElement('w:r')
-                if run_info.get('bold') or run_info.get('italic') or run_info.get('underline'):
-                    rPr = OxmlElement('w:rPr')  # noqa: N806
-                    if run_info.get('bold'):
-                        rPr.append(OxmlElement('w:b'))
-                    if run_info.get('italic'):
-                        rPr.append(OxmlElement('w:i'))
-                    if run_info.get('underline'):
-                        rPr.append(OxmlElement('w:u'))
+                r = OxmlElement("w:r")
+                if run_info.get("bold") or run_info.get("italic") or run_info.get("underline"):
+                    rPr = OxmlElement("w:rPr")  # noqa: N806
+                    if run_info.get("bold"):
+                        rPr.append(OxmlElement("w:b"))
+                    if run_info.get("italic"):
+                        rPr.append(OxmlElement("w:i"))
+                    if run_info.get("underline"):
+                        rPr.append(OxmlElement("w:u"))
                     r.append(rPr)
-                t = OxmlElement('w:t')
-                t.text = run_info.get('text', '')
+                t = OxmlElement("w:t")
+                t.text = run_info.get("text", "")
                 r.append(t)
                 p.append(r)
         else:
-            r = OxmlElement('w:r')
-            t = OxmlElement('w:t')
-            t.text = para.text or ''
+            r = OxmlElement("w:r")
+            t = OxmlElement("w:t")
+            t.text = para.text or ""
             r.append(t)
             p.append(r)
         return p
@@ -483,7 +536,12 @@ class DocumentAssembler:
         style_map: Dict[str, str],
         template: TemplateProfile,
     ) -> Optional[str]:
-        if para.style_name and para.style_name not in ('Normal', 'BodyText', 'BodyText2', 'NoSpacing'):
+        if para.style_name and para.style_name not in (
+            "Normal",
+            "BodyText",
+            "BodyText2",
+            "NoSpacing",
+        ):
             if para.style_name in style_map:
                 return style_map[para.style_name]
             if para.style_name in template.paragraph_styles:
@@ -500,8 +558,11 @@ class DocumentAssembler:
     # ── Legacy / fallback for fresh Document() creation ──
 
     def _build_fresh(
-        self, doc: Document, template: TemplateProfile,
-        content: ContentProfile, style_matches: List[StyleMatch],
+        self,
+        doc: Document,
+        template: TemplateProfile,
+        content: ContentProfile,
+        style_matches: List[StyleMatch],
     ) -> None:
         style_map = {m.source_style_id: m.target_style_id for m in style_matches}
         self._apply_document_defaults(doc, template)
@@ -519,14 +580,14 @@ class DocumentAssembler:
         try:
             section = doc.sections[0]
             if defaults.margins:
-                for key in ('top', 'bottom', 'left', 'right'):
+                for key in ("top", "bottom", "left", "right"):
                     if key in defaults.margins:
                         setattr(section, f"{key}_margin", Inches(defaults.margins[key]))
             if defaults.page_width_inches:
                 section.page_width = Inches(defaults.page_width_inches)
             if defaults.page_height_inches:
                 section.page_height = Inches(defaults.page_height_inches)
-            if defaults.orientation == 'landscape':
+            if defaults.orientation == "landscape":
                 section.orientation = 1
         except Exception as e:
             logger.warning(f"Could not apply document defaults: {e}")
@@ -557,7 +618,7 @@ class DocumentAssembler:
                     font.bold = tstyle.font.bold
                 if tstyle.font.italic is not None:
                     font.italic = tstyle.font.italic
-                if tstyle.font.color and not tstyle.font.color.startswith('theme:'):
+                if tstyle.font.color and not tstyle.font.color.startswith("theme:"):
                     try:
                         font.color.rgb = RGBColor.from_string(tstyle.font.color)
                     except Exception:
@@ -565,11 +626,16 @@ class DocumentAssembler:
             pfmt = docx_style.paragraph_format
             if tstyle.alignment and tstyle.alignment.alignment:
                 align_map = {
-                    '0': WD_ALIGN_PARAGRAPH.LEFT, 'LEFT': WD_ALIGN_PARAGRAPH.LEFT,
-                    '1': WD_ALIGN_PARAGRAPH.CENTER, 'CENTER': WD_ALIGN_PARAGRAPH.CENTER,
-                    '2': WD_ALIGN_PARAGRAPH.RIGHT, 'RIGHT': WD_ALIGN_PARAGRAPH.RIGHT,
-                    '3': WD_ALIGN_PARAGRAPH.JUSTIFY, 'JUSTIFY': WD_ALIGN_PARAGRAPH.JUSTIFY,
-                    'BOTH': WD_ALIGN_PARAGRAPH.JUSTIFY, 'None': WD_ALIGN_PARAGRAPH.LEFT,
+                    "0": WD_ALIGN_PARAGRAPH.LEFT,
+                    "LEFT": WD_ALIGN_PARAGRAPH.LEFT,
+                    "1": WD_ALIGN_PARAGRAPH.CENTER,
+                    "CENTER": WD_ALIGN_PARAGRAPH.CENTER,
+                    "2": WD_ALIGN_PARAGRAPH.RIGHT,
+                    "RIGHT": WD_ALIGN_PARAGRAPH.RIGHT,
+                    "3": WD_ALIGN_PARAGRAPH.JUSTIFY,
+                    "JUSTIFY": WD_ALIGN_PARAGRAPH.JUSTIFY,
+                    "BOTH": WD_ALIGN_PARAGRAPH.JUSTIFY,
+                    "None": WD_ALIGN_PARAGRAPH.LEFT,
                 }
                 if tstyle.alignment.alignment in align_map:
                     pfmt.alignment = align_map[tstyle.alignment.alignment]
@@ -591,14 +657,17 @@ class DocumentAssembler:
             logger.debug(f"Error applying style {tstyle.style_id}: {e}")
 
     def _add_paragraph(
-        self, doc: Document, para: ParagraphContent,
-        style_map: Dict[str, str], template: TemplateProfile,
+        self,
+        doc: Document,
+        para: ParagraphContent,
+        style_map: Dict[str, str],
+        template: TemplateProfile,
     ) -> None:
         target_style_id = self._resolve_target_style(para, style_map, template)
         new_para = doc.add_paragraph()
         if para.runs:
             for run_info in para.runs:
-                run = new_para.add_run(run_info.get('text', ''))
+                run = new_para.add_run(run_info.get("text", ""))
                 self._apply_run_formatting(run, run_info)
         else:
             new_para.add_run(para.text)
@@ -610,10 +679,17 @@ class DocumentAssembler:
         self._apply_direct_paragraph_formatting(new_para, para, template, target_style_id)
 
     def _resolve_target_style(
-        self, para: ParagraphContent,
-        style_map: Dict[str, str], template: TemplateProfile,
+        self,
+        para: ParagraphContent,
+        style_map: Dict[str, str],
+        template: TemplateProfile,
     ) -> Optional[str]:
-        if para.style_name and para.style_name not in ('Normal', 'BodyText', 'BodyText2', 'NoSpacing'):
+        if para.style_name and para.style_name not in (
+            "Normal",
+            "BodyText",
+            "BodyText2",
+            "NoSpacing",
+        ):
             if para.style_name in style_map:
                 return style_map[para.style_name]
             if para.style_name in template.paragraph_styles:
@@ -625,10 +701,12 @@ class DocumentAssembler:
             for style_id, tstyle in template.paragraph_styles.items():
                 if tstyle.semantic_role == role:
                     return style_id
-            if role.value.startswith('heading') or role.value.startswith('title'):
+            if role.value.startswith("heading") or role.value.startswith("title"):
                 for style_id, tstyle in template.paragraph_styles.items():
                     trole = tstyle.semantic_role
-                    if trole and (trole.value.startswith('heading') or trole.value.startswith('title')):
+                    if trole and (
+                        trole.value.startswith("heading") or trole.value.startswith("title")
+                    ):
                         return style_id
         return self._heuristic_style_match(para, template)
 
@@ -643,11 +721,13 @@ class DocumentAssembler:
                 return SemanticRole.HEADING_1
             if para.has_bold:
                 return SemanticRole.HEADING_2
-        if para.is_list_item or text.startswith(('•', '●', '○', '▪', '-')):
+        if para.is_list_item or text.startswith(("•", "●", "○", "▪", "-")):
             return SemanticRole.LIST_BULLET
         return SemanticRole.BODY_TEXT
 
-    def _heuristic_style_match(self, para: ParagraphContent, template: TemplateProfile) -> Optional[str]:
+    def _heuristic_style_match(
+        self, para: ParagraphContent, template: TemplateProfile
+    ) -> Optional[str]:
         estimated_size = para.max_font_size or 11
         best_target = None
         best_score = 0.0
@@ -672,7 +752,9 @@ class DocumentAssembler:
                 best_target = style_id
         return best_target if best_score >= 0.3 else None
 
-    def _apply_style_by_definition(self, new_para, style_id: str, template: TemplateProfile) -> None:
+    def _apply_style_by_definition(
+        self, new_para, style_id: str, template: TemplateProfile
+    ) -> None:
         if style_id not in template.paragraph_styles:
             return
         tstyle = template.paragraph_styles[style_id]
@@ -690,11 +772,16 @@ class DocumentAssembler:
             pfmt = new_para.paragraph_format
             if tstyle.alignment and tstyle.alignment.alignment:
                 align_map = {
-                    '0': WD_ALIGN_PARAGRAPH.LEFT, 'LEFT': WD_ALIGN_PARAGRAPH.LEFT,
-                    '1': WD_ALIGN_PARAGRAPH.CENTER, 'CENTER': WD_ALIGN_PARAGRAPH.CENTER,
-                    '2': WD_ALIGN_PARAGRAPH.RIGHT, 'RIGHT': WD_ALIGN_PARAGRAPH.RIGHT,
-                    '3': WD_ALIGN_PARAGRAPH.JUSTIFY, 'JUSTIFY': WD_ALIGN_PARAGRAPH.JUSTIFY,
-                    'BOTH': WD_ALIGN_PARAGRAPH.JUSTIFY, 'None': WD_ALIGN_PARAGRAPH.LEFT,
+                    "0": WD_ALIGN_PARAGRAPH.LEFT,
+                    "LEFT": WD_ALIGN_PARAGRAPH.LEFT,
+                    "1": WD_ALIGN_PARAGRAPH.CENTER,
+                    "CENTER": WD_ALIGN_PARAGRAPH.CENTER,
+                    "2": WD_ALIGN_PARAGRAPH.RIGHT,
+                    "RIGHT": WD_ALIGN_PARAGRAPH.RIGHT,
+                    "3": WD_ALIGN_PARAGRAPH.JUSTIFY,
+                    "JUSTIFY": WD_ALIGN_PARAGRAPH.JUSTIFY,
+                    "BOTH": WD_ALIGN_PARAGRAPH.JUSTIFY,
+                    "None": WD_ALIGN_PARAGRAPH.LEFT,
                 }
                 if tstyle.alignment.alignment in align_map:
                     pfmt.alignment = align_map[tstyle.alignment.alignment]
@@ -717,18 +804,21 @@ class DocumentAssembler:
 
     def _apply_run_formatting(self, run, run_info: Dict[str, Any]) -> None:
         try:
-            if run_info.get('bold'):
+            if run_info.get("bold"):
                 run.bold = True
-            if run_info.get('italic'):
+            if run_info.get("italic"):
                 run.italic = True
-            if run_info.get('underline'):
+            if run_info.get("underline"):
                 run.underline = True
         except Exception:
             pass
 
     def _apply_direct_paragraph_formatting(
-        self, new_para, para: ParagraphContent,
-        template: TemplateProfile, target_style_id: Optional[str],
+        self,
+        new_para,
+        para: ParagraphContent,
+        template: TemplateProfile,
+        target_style_id: Optional[str],
     ) -> None:
         try:
             pfmt = new_para.paragraph_format
@@ -738,24 +828,25 @@ class DocumentAssembler:
                     pfmt.left_indent = Inches(indent)
             if para.alignment and not target_style_id:
                 align_map = {
-                    'LEFT': WD_ALIGN_PARAGRAPH.LEFT,
-                    'CENTER': WD_ALIGN_PARAGRAPH.CENTER,
-                    'RIGHT': WD_ALIGN_PARAGRAPH.RIGHT,
-                    'JUSTIFY': WD_ALIGN_PARAGRAPH.JUSTIFY,
+                    "LEFT": WD_ALIGN_PARAGRAPH.LEFT,
+                    "CENTER": WD_ALIGN_PARAGRAPH.CENTER,
+                    "RIGHT": WD_ALIGN_PARAGRAPH.RIGHT,
+                    "JUSTIFY": WD_ALIGN_PARAGRAPH.JUSTIFY,
                 }
                 if para.alignment in align_map:
                     pfmt.alignment = align_map[para.alignment]
         except Exception:
             pass
 
-    def _add_table(self, doc: Document, table_info: Any,
-                   style_map: Dict[str, str], template: TemplateProfile) -> None:
-        row_count = getattr(table_info, 'row_count', 0) or 2
-        col_count = getattr(table_info, 'column_count', 0) or 2
+    def _add_table(
+        self, doc: Document, table_info: Any, style_map: Dict[str, str], template: TemplateProfile
+    ) -> None:
+        row_count = getattr(table_info, "row_count", 0) or 2
+        col_count = getattr(table_info, "column_count", 0) or 2
         try:
             table = doc.add_table(rows=row_count, cols=col_count)
-            table.style = 'Table Grid'
-            rows = getattr(table_info, 'rows', None)
+            table.style = "Table Grid"
+            rows = getattr(table_info, "rows", None)
             if rows:
                 for i, row_data in enumerate(rows):
                     if i >= len(table.rows):
@@ -773,11 +864,11 @@ class DocumentAssembler:
         try:
             if template.headers:
                 section = doc.sections[0]
-                if section.header is not None and template.headers.get('default'):
-                    section.header.paragraphs[0].text = template.headers.get('default', '')
+                if section.header is not None and template.headers.get("default"):
+                    section.header.paragraphs[0].text = template.headers.get("default", "")
             if template.footers:
                 section = doc.sections[0]
-                if section.footer is not None and template.footers.get('default'):
-                    section.footer.paragraphs[0].text = template.footers.get('default', '')
+                if section.footer is not None and template.footers.get("default"):
+                    section.footer.paragraphs[0].text = template.footers.get("default", "")
         except Exception as e:
             logger.warning(f"Could not copy headers/footers: {e}")

@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 # Try importing python-docx
 try:
     from docx import Document
+
     DOCX_AVAILABLE = True
 except ImportError:
     DOCX_AVAILABLE = False
@@ -33,9 +34,9 @@ logger = logging.getLogger(__name__)
 
 # Namespaces OOXML
 NAMESPACES = {
-    'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
-    'r': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
-    'a': 'http://schemas.openxmlformats.org/drawingml/2006/main',
+    "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+    "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+    "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
 }
 
 
@@ -48,18 +49,20 @@ def _get_text(elem: ET.Element) -> str:
         text.append(_get_text(child))
         if child.tail:
             text.append(child.tail)
-    return ''.join(text)
+    return "".join(text)
 
 
 def _parse_color(color_elem: Optional[ET.Element]) -> Optional[str]:
     """Parse color from w:color element. Returns hex string like 'FF0000'."""
     if color_elem is None:
         return None
-    val = color_elem.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val')
-    if val and val != 'auto':
+    val = color_elem.get("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val")
+    if val and val != "auto":
         return val.upper()
     # Try theme color
-    theme_color = color_elem.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}themeColor')
+    theme_color = color_elem.get(
+        "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}themeColor"
+    )
     if theme_color:
         return f"theme:{theme_color}"
     return None
@@ -69,7 +72,7 @@ def _parse_font_size(sz_elem: Optional[ET.Element]) -> Optional[float]:
     """Parse font size in half-points, return points."""
     if sz_elem is None:
         return None
-    val = sz_elem.get('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val')
+    val = sz_elem.get("{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val")
     if val:
         try:
             return int(val) / 2.0
@@ -120,7 +123,9 @@ class DOCXExtractor:
 
         # Extract paragraphs
         for i, para in enumerate(doc.paragraphs):
-            para_content = self._extract_paragraph(para, para_index=i, total_paras=len(doc.paragraphs))
+            para_content = self._extract_paragraph(
+                para, para_index=i, total_paras=len(doc.paragraphs)
+            )
             if para_content.text.strip():
                 profile.paragraphs.append(para_content)
                 profile.word_count += len(para_content.text.split())
@@ -217,49 +222,57 @@ class DOCXExtractor:
 
     def _detect_role_from_name(self, style_id: str, style_name: str) -> Optional[SemanticRole]:
         """Infer semantic role from style name/id."""
-        s = (style_id or '').lower()
-        n = (style_name or '').lower()
+        s = (style_id or "").lower()
+        n = (style_name or "").lower()
 
         # Title
-        if 'title' in s or 'title' in n or 'naglowek' in n:
+        if "title" in s or "title" in n or "naglowek" in n:
             return SemanticRole.TITLE
 
         # Heading levels (only 1-4 available)
         for level in [1, 2, 3, 4]:
-            if f'heading {level}' in n or f'heading{level}' in n or f'heading{level}' in s:
-                return [SemanticRole.HEADING_1, SemanticRole.HEADING_2,
-                        SemanticRole.HEADING_3, SemanticRole.HEADING_4][level-1]
+            if f"heading {level}" in n or f"heading{level}" in n or f"heading{level}" in s:
+                return [
+                    SemanticRole.HEADING_1,
+                    SemanticRole.HEADING_2,
+                    SemanticRole.HEADING_3,
+                    SemanticRole.HEADING_4,
+                ][level - 1]
             # Polish heading names
-            if f'naglowek {level}' in n or f'naglowek{level}' in n:
-                return [SemanticRole.HEADING_1, SemanticRole.HEADING_2,
-                        SemanticRole.HEADING_3, SemanticRole.HEADING_4][level-1]
+            if f"naglowek {level}" in n or f"naglowek{level}" in n:
+                return [
+                    SemanticRole.HEADING_1,
+                    SemanticRole.HEADING_2,
+                    SemanticRole.HEADING_3,
+                    SemanticRole.HEADING_4,
+                ][level - 1]
 
         # General heading
-        if 'heading' in s or 'heading' in n or 'naglowek' in n:
+        if "heading" in s or "heading" in n or "naglowek" in n:
             return SemanticRole.HEADING_1
 
         # Subtitle
-        if 'subtitle' in s or 'subtitle' in n or 'podtytul' in n:
+        if "subtitle" in s or "subtitle" in n or "podtytul" in n:
             return SemanticRole.SUBTITLE
 
         # Body
-        if 'body' in s or 'body' in n or 'tresc' in n or 'tekst' in n:
+        if "body" in s or "body" in n or "tresc" in n or "tekst" in n:
             return SemanticRole.BODY_TEXT
 
         # Quote
-        if 'quote' in s or 'quote' in n or 'cytat' in n:
+        if "quote" in s or "quote" in n or "cytat" in n:
             return SemanticRole.QUOTE
 
         # List
-        if 'bullet' in s or 'bullet' in n or 'punktor' in n:
+        if "bullet" in s or "bullet" in n or "punktor" in n:
             return SemanticRole.LIST_BULLET
-        if 'number' in s or 'number' in n or 'numer' in n:
+        if "number" in s or "number" in n or "numer" in n:
             return SemanticRole.LIST_NUMBER
-        if 'list' in s or 'lista' in n:
+        if "list" in s or "lista" in n:
             return SemanticRole.LIST_BULLET
 
         # Caption
-        if 'caption' in s or 'caption' in n or 'podpis' in n:
+        if "caption" in s or "caption" in n or "podpis" in n:
             return SemanticRole.CAPTION
 
         return None
@@ -270,14 +283,14 @@ class DOCXExtractor:
         try:
             section = doc.sections[0]
             defaults.margins = {
-                'top': section.top_margin.inches,
-                'bottom': section.bottom_margin.inches,
-                'left': section.left_margin.inches,
-                'right': section.right_margin.inches,
+                "top": section.top_margin.inches,
+                "bottom": section.bottom_margin.inches,
+                "left": section.left_margin.inches,
+                "right": section.right_margin.inches,
             }
             defaults.page_width_inches = section.page_width.inches
             defaults.page_height_inches = section.page_height.inches
-            defaults.orientation = 'landscape' if section.orientation else 'portrait'
+            defaults.orientation = "landscape" if section.orientation else "portrait"
         except Exception as e:
             logger.warning(f"Error extracting document defaults: {e}")
         return defaults
@@ -288,19 +301,19 @@ class DOCXExtractor:
         This provides more complete data than python-docx API.
         """
         try:
-            with zipfile.ZipFile(docx_path, 'r') as zf:
-                if 'word/styles.xml' not in zf.namelist():
+            with zipfile.ZipFile(docx_path, "r") as zf:
+                if "word/styles.xml" not in zf.namelist():
                     return
 
-                styles_xml = zf.read('word/styles.xml')
+                styles_xml = zf.read("word/styles.xml")
                 root = ET.fromstring(styles_xml)
-                ns = NAMESPACES['w']
+                ns = NAMESPACES["w"]
 
-                for style_elem in root.findall(f'.//{{{ns}}}style'):
-                    style_id = style_elem.get(f'{{{ns}}}styleId')
-                    style_type = style_elem.get(f'{{{ns}}}type')
+                for style_elem in root.findall(f".//{{{ns}}}style"):
+                    style_id = style_elem.get(f"{{{ns}}}styleId")
+                    style_type = style_elem.get(f"{{{ns}}}type")
 
-                    if style_type != 'paragraph':
+                    if style_type != "paragraph":
                         continue
 
                     # Find or create style
@@ -311,19 +324,19 @@ class DOCXExtractor:
                         profile.paragraph_styles[style_id] = ps
 
                     # Extract name
-                    name_elem = style_elem.find(f'.//{{{ns}}}name')
+                    name_elem = style_elem.find(f".//{{{ns}}}name")
                     if name_elem is not None:
-                        ps.name = name_elem.get(f'{{{ns}}}val') or ps.name
+                        ps.name = name_elem.get(f"{{{ns}}}val") or ps.name
 
                     # Extract basedOn
-                    based_elem = style_elem.find(f'{{{ns}}}basedOn')
+                    based_elem = style_elem.find(f"{{{ns}}}basedOn")
                     if based_elem is not None:
-                        ps.based_on = based_elem.get(f'{{{ns}}}val')
+                        ps.based_on = based_elem.get(f"{{{ns}}}val")
 
                     # Outline level
-                    outline_elem = style_elem.find(f'.//{{{ns}}}outlineLvl')
+                    outline_elem = style_elem.find(f".//{{{ns}}}outlineLvl")
                     if outline_elem is not None:
-                        val = outline_elem.get(f'{{{ns}}}val')
+                        val = outline_elem.get(f"{{{ns}}}val")
                         if val is not None:
                             ps.outline_level = int(val)
                             # Auto-assign semantic role for headings
@@ -338,51 +351,53 @@ class DOCXExtractor:
                                 ps.role_confidence = 0.9
 
                     # Extract font properties from rPr if not already set
-                    rpr = style_elem.find(f'.//{{{ns}}}rPr')
+                    rpr = style_elem.find(f".//{{{ns}}}rPr")
                     if rpr is not None:
                         if ps.font.size_pt is None:
-                            sz = rpr.find(f'{{{ns}}}sz')
+                            sz = rpr.find(f"{{{ns}}}sz")
                             ps.font.size_pt = _parse_font_size(sz)
                         if ps.font.color is None:
-                            color = rpr.find(f'{{{ns}}}color')
+                            color = rpr.find(f"{{{ns}}}color")
                             ps.font.color = _parse_color(color)
                         if ps.font.name is None:
-                            rfonts = rpr.find(f'{{{ns}}}rFonts')
+                            rfonts = rpr.find(f"{{{ns}}}rFonts")
                             if rfonts is not None:
-                                ps.font.name = rfonts.get(f'{{{ns}}}ascii')
+                                ps.font.name = rfonts.get(f"{{{ns}}}ascii")
 
                     # Paragraph properties
-                    ppr = style_elem.find(f'{{{ns}}}pPr')
+                    ppr = style_elem.find(f"{{{ns}}}pPr")
                     if ppr is not None:
                         # Spacing
-                        spacing_elem = ppr.find(f'{{{ns}}}spacing')
+                        spacing_elem = ppr.find(f"{{{ns}}}spacing")
                         if spacing_elem is not None:
-                            before = spacing_elem.get(f'{{{ns}}}before')
-                            after = spacing_elem.get(f'{{{ns}}}after')
+                            before = spacing_elem.get(f"{{{ns}}}before")
+                            after = spacing_elem.get(f"{{{ns}}}after")
                             if before:
                                 ps.spacing.before_pt = int(before) / 20.0  # twips to pt
                             if after:
                                 ps.spacing.after_pt = int(after) / 20.0
-                            line = spacing_elem.get(f'{{{ns}}}line')
+                            line = spacing_elem.get(f"{{{ns}}}line")
                             if line:
                                 line_val = int(line)
-                                line_rule = spacing_elem.get(f'{{{ns}}}lineRule')
-                                if line_rule == 'auto':
+                                line_rule = spacing_elem.get(f"{{{ns}}}lineRule")
+                                if line_rule == "auto":
                                     ps.spacing.line_spacing = line_val / 240.0
                                 else:
                                     ps.spacing.line_spacing = line_val / 20.0
 
                         # Alignment
-                        jc = ppr.find(f'{{{ns}}}jc')
+                        jc = ppr.find(f"{{{ns}}}jc")
                         if jc is not None:
-                            ps.alignment.alignment = jc.get(f'{{{ns}}}val')
+                            ps.alignment.alignment = jc.get(f"{{{ns}}}val")
 
         except Exception as e:
             logger.warning(f"Error reading styles.xml: {e}")
 
-    def _extract_paragraph(self, para, para_index: int = 0, total_paras: int = 1) -> ParagraphContent:
+    def _extract_paragraph(
+        self, para, para_index: int = 0, total_paras: int = 1
+    ) -> ParagraphContent:
         """Extract paragraph content and metadata."""
-        text = para.text or ''
+        text = para.text or ""
 
         # Style name
         style_name = None
@@ -400,28 +415,28 @@ class DOCXExtractor:
         max_font_size = None
 
         for run in para.runs:
-            run_text = run.text or ''
+            run_text = run.text or ""
             if not run_text:
                 continue
 
-            run_info = {'text': run_text}
+            run_info = {"text": run_text}
             try:
                 if run.bold:
-                    run_info['bold'] = True
+                    run_info["bold"] = True
                     has_bold = True
                 if run.italic:
-                    run_info['italic'] = True
+                    run_info["italic"] = True
                     has_italic = True
                 if run.underline:
-                    run_info['underline'] = True
+                    run_info["underline"] = True
                     has_underline = True
                 if run.font.size:
                     size = run.font.size.pt
-                    run_info['size'] = size
+                    run_info["size"] = size
                     if max_font_size is None or size > max_font_size:
                         max_font_size = size
                 if run.font.color and run.font.color.rgb:
-                    run_info['color'] = str(run.font.color.rgb)
+                    run_info["color"] = str(run.font.color.rgb)
             except Exception:
                 pass
 
@@ -441,8 +456,13 @@ class DOCXExtractor:
 
         # Estimated semantic role from content
         estimated_role = self._estimate_role(
-            text, has_bold, max_font_size, style_name,
-            is_list=is_list, para_index=para_index, total_paras=total_paras
+            text,
+            has_bold,
+            max_font_size,
+            style_name,
+            is_list=is_list,
+            para_index=para_index,
+            total_paras=total_paras,
         )
 
         return ParagraphContent(
@@ -459,9 +479,16 @@ class DOCXExtractor:
             estimated_role=estimated_role,
         )
 
-    def _estimate_role(self, text: str, has_bold: bool, max_font_size: Optional[float],
-                       style_name: Optional[str], is_list: bool = False,
-                       para_index: int = 0, total_paras: int = 1) -> Optional[SemanticRole]:
+    def _estimate_role(
+        self,
+        text: str,
+        has_bold: bool,
+        max_font_size: Optional[float],
+        style_name: Optional[str],
+        is_list: bool = False,
+        para_index: int = 0,
+        total_paras: int = 1,
+    ) -> Optional[SemanticRole]:
         """Estimate semantic role from content heuristics."""
         text = text.strip()
         if not text:
@@ -471,18 +498,18 @@ class DOCXExtractor:
         if style_name:
             s = style_name.lower()
             role_map = {
-                'heading 1': SemanticRole.HEADING_1,
-                'heading 2': SemanticRole.HEADING_2,
-                'heading 3': SemanticRole.HEADING_3,
-                'heading 4': SemanticRole.HEADING_4,
-                'title': SemanticRole.TITLE,
-                'subtitle': SemanticRole.SUBTITLE,
-                'quote': SemanticRole.QUOTE,
-                'caption': SemanticRole.CAPTION,
-                'list': SemanticRole.LIST_BULLET,
-                'bullet': SemanticRole.LIST_BULLET,
-                'numbered': SemanticRole.LIST_NUMBER,
-                'footnote': SemanticRole.FOOTER,
+                "heading 1": SemanticRole.HEADING_1,
+                "heading 2": SemanticRole.HEADING_2,
+                "heading 3": SemanticRole.HEADING_3,
+                "heading 4": SemanticRole.HEADING_4,
+                "title": SemanticRole.TITLE,
+                "subtitle": SemanticRole.SUBTITLE,
+                "quote": SemanticRole.QUOTE,
+                "caption": SemanticRole.CAPTION,
+                "list": SemanticRole.LIST_BULLET,
+                "bullet": SemanticRole.LIST_BULLET,
+                "numbered": SemanticRole.LIST_NUMBER,
+                "footnote": SemanticRole.FOOTER,
             }
             for key, role in role_map.items():
                 if key in s:
@@ -517,25 +544,26 @@ class DOCXExtractor:
             return SemanticRole.HEADING_2
 
         # List items
-        if is_list or text.startswith(('●', '•', '○', '▪', '-', '►', '→')):
+        if is_list or text.startswith(("●", "•", "○", "▪", "-", "►", "→")):
             return SemanticRole.LIST_BULLET
 
         # Numbered list
-        if text[:3].strip().endswith('.') and text[:2].strip() and text[:2].strip()[0].isdigit():
+        if text[:3].strip().endswith(".") and text[:2].strip() and text[:2].strip()[0].isdigit():
             return SemanticRole.LIST_NUMBER
 
         # Date patterns
         import re
+
         date_patterns = [
-            r'\d{2}[./]\d{2}[./]\d{4}',
-            r'\d{4}-\d{2}-\d{2}',
+            r"\d{2}[./]\d{2}[./]\d{4}",
+            r"\d{4}-\d{2}-\d{2}",
         ]
         for pattern in date_patterns:
             if re.search(pattern, text):
                 return SemanticRole.DATE_FIELD
 
         # Amount patterns
-        amount_pattern = r'\d{1,3}(?:\s?\d{3})*(?:[.,]\d{2})?\s*(?:PLN|USD|EUR|GBP|\$|€|£)'
+        amount_pattern = r"\d{1,3}(?:\s?\d{3})*(?:[.,]\d{2})?\s*(?:PLN|USD|EUR|GBP|\$|€|£)"
         if re.search(amount_pattern, text):
             return SemanticRole.AMOUNT_FIELD
 
@@ -567,7 +595,7 @@ class DOCXExtractor:
 
     def _build_structure_tree(self, paragraphs: List[ParagraphContent]) -> Dict[str, Any]:
         """Build hierarchical structure tree from paragraphs."""
-        tree = {'type': 'document', 'children': []}
+        tree = {"type": "document", "children": []}
         current_section = tree
 
         for para in paragraphs:
@@ -575,28 +603,30 @@ class DOCXExtractor:
 
             if role in (SemanticRole.TITLE, SemanticRole.HEADING_1):
                 section = {
-                    'type': 'section',
-                    'heading': para.text,
-                    'role': role.value,
-                    'children': []
+                    "type": "section",
+                    "heading": para.text,
+                    "role": role.value,
+                    "children": [],
                 }
-                tree['children'].append(section)
+                tree["children"].append(section)
                 current_section = section
             elif role in (SemanticRole.HEADING_2, SemanticRole.HEADING_3):
                 subsection = {
-                    'type': 'subsection',
-                    'heading': para.text,
-                    'role': role.value,
-                    'children': []
+                    "type": "subsection",
+                    "heading": para.text,
+                    "role": role.value,
+                    "children": [],
                 }
-                current_section['children'].append(subsection)
+                current_section["children"].append(subsection)
                 current_section = subsection
             else:
-                current_section.setdefault('children', []).append({
-                    'type': 'paragraph',
-                    'text': para.text[:100],
-                    'role': role.value,
-                })
+                current_section.setdefault("children", []).append(
+                    {
+                        "type": "paragraph",
+                        "text": para.text[:100],
+                        "role": role.value,
+                    }
+                )
 
         return tree
 
@@ -609,8 +639,8 @@ class DOCXExtractor:
             return TemplateType.STYLE_DEFINITIONS
 
         # Check if content looks like instructions
-        instruction_keywords = ['format', 'style', 'template', 'document', 'heading', 'font']
-        full_text = ' '.join(p.text.lower() for p in doc.paragraphs)
+        instruction_keywords = ["format", "style", "template", "document", "heading", "font"]
+        full_text = " ".join(p.text.lower() for p in doc.paragraphs)
         instruction_score = sum(1 for kw in instruction_keywords if kw in full_text)
 
         if instruction_score >= 5:
@@ -619,4 +649,4 @@ class DOCXExtractor:
         return TemplateType.EXAMPLE_DOCUMENT
 
 
-__all__ = ['DOCXExtractor']
+__all__ = ["DOCXExtractor"]

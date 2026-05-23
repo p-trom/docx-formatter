@@ -14,7 +14,9 @@ router = APIRouter(tags=["format"])
 async def format_template_upload(
     template: UploadFile = File(..., description="Template DOCX file containing styles"),
     content: UploadFile = File(..., description="Content DOCX file with raw text"),
-    output_filename: str | None = Form(None, description="Optional output filename (must end with .docx)"),
+    output_filename: str | None = Form(
+        None, description="Optional output filename (must end with .docx)"
+    ),
 ):
     """
     Format a content document using a template document.

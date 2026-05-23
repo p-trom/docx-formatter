@@ -9,13 +9,15 @@ from typing import Any, Dict, List, Optional
 
 class TemplateType(Enum):
     """Typ template'u na podstawie zawartości."""
-    STYLE_DEFINITIONS = auto()    # Tylko definicje stylów, bez treści
-    EXAMPLE_DOCUMENT = auto()     # Dokument przykładowy z "lorem ipsum"
-    TEXT_INSTRUCTIONS = auto()    # Dokument z tekstowymi instrukcjami
+
+    STYLE_DEFINITIONS = auto()  # Tylko definicje stylów, bez treści
+    EXAMPLE_DOCUMENT = auto()  # Dokument przykładowy z "lorem ipsum"
+    TEXT_INSTRUCTIONS = auto()  # Dokument z tekstowymi instrukcjami
 
 
 class SemanticRole(Enum):
     """Semantyczna rola elementu dokumentu."""
+
     TITLE = "title"
     SUBTITLE = "subtitle"
     HEADING_1 = "heading_1"
@@ -39,13 +41,14 @@ class SemanticRole(Enum):
 @dataclass
 class FontStyle:
     """Opis czcionki - char style + run properties."""
+
     name: Optional[str] = None
-    size_pt: Optional[float] = None           # w punktach
+    size_pt: Optional[float] = None  # w punktach
     bold: Optional[bool] = None
     italic: Optional[bool] = None
-    underline: Optional[str] = None           # 'single', 'double', 'none'
-    color: Optional[str] = None               # hex RGB, np. "FF0000"
-    highlight: Optional[str] = None           # kolor podświetlenia
+    underline: Optional[str] = None  # 'single', 'double', 'none'
+    color: Optional[str] = None  # hex RGB, np. "FF0000"
+    highlight: Optional[str] = None  # kolor podświetlenia
     small_caps: Optional[bool] = None
     all_caps: Optional[bool] = None
     strike: Optional[bool] = None
@@ -81,16 +84,18 @@ class FontStyle:
 @dataclass
 class ParagraphSpacing:
     """Odstępy paragrafu."""
+
     before_pt: Optional[float] = None
     after_pt: Optional[float] = None
-    line_spacing: Optional[float] = None      # 1.0 = single, 1.5 = one-half, 2.0 = double
-    line_spacing_rule: Optional[str] = None   # 'auto', 'exact', 'atLeast'
+    line_spacing: Optional[float] = None  # 1.0 = single, 1.5 = one-half, 2.0 = double
+    line_spacing_rule: Optional[str] = None  # 'auto', 'exact', 'atLeast'
 
 
 @dataclass
 class ParagraphBorder:
     """Ramka paragrafu."""
-    top: Optional[Dict[str, Any]] = None      # {style, color, space, size}
+
+    top: Optional[Dict[str, Any]] = None  # {style, color, space, size}
     bottom: Optional[Dict[str, Any]] = None
     left: Optional[Dict[str, Any]] = None
     right: Optional[Dict[str, Any]] = None
@@ -99,12 +104,14 @@ class ParagraphBorder:
 @dataclass
 class ParagraphAlignment:
     """Wyrównanie paragrafu."""
-    alignment: Optional[str] = None           # 'left', 'right', 'center', 'justify'
+
+    alignment: Optional[str] = None  # 'left', 'right', 'center', 'justify'
 
 
 @dataclass
 class ParagraphIndentation:
     """Wcięcia paragrafu."""
+
     left_inches: Optional[float] = None
     right_inches: Optional[float] = None
     first_line_inches: Optional[float] = None
@@ -114,16 +121,17 @@ class ParagraphIndentation:
 @dataclass
 class ParagraphStyle:
     """Pełny opis stylu paragrafowego."""
+
     style_id: str
     name: str
-    based_on: Optional[str] = None            # styl bazowy
-    next_style: Optional[str] = None          # następny styl
+    based_on: Optional[str] = None  # styl bazowy
+    next_style: Optional[str] = None  # następny styl
     font: FontStyle = field(default_factory=FontStyle)
     alignment: ParagraphAlignment = field(default_factory=ParagraphAlignment)
     spacing: ParagraphSpacing = field(default_factory=ParagraphSpacing)
     indentation: ParagraphIndentation = field(default_factory=ParagraphIndentation)
     border: Optional[ParagraphBorder] = None
-    outline_level: Optional[int] = None       # 0 - Heading 1, 1 - Heading 2, ...
+    outline_level: Optional[int] = None  # 0 - Heading 1, 1 - Heading 2, ...
     is_default: bool = False
     is_built_in: bool = False
     hidden: bool = False
@@ -136,6 +144,7 @@ class ParagraphStyle:
 @dataclass
 class CharacterStyle:
     """Styl znakowy (inline style)."""
+
     style_id: str
     name: str
     font: FontStyle = field(default_factory=FontStyle)
@@ -145,6 +154,7 @@ class CharacterStyle:
 @dataclass
 class TableStyle:
     """Styl tabeli."""
+
     style_id: str
     name: str
     # Simplifikacja - pełne wsparcie w v2
@@ -155,10 +165,11 @@ class TableStyle:
 @dataclass
 class DocumentDefaults:
     """Domyślne ustawienia dokumentu."""
-    margins: Dict[str, float] = field(default_factory=dict)   # top, bottom, left, right w inches
+
+    margins: Dict[str, float] = field(default_factory=dict)  # top, bottom, left, right w inches
     page_width_inches: Optional[float] = None
     page_height_inches: Optional[float] = None
-    orientation: str = "portrait"                               # 'portrait' | 'landscape'
+    orientation: str = "portrait"  # 'portrait' | 'landscape'
     default_font: Optional[FontStyle] = None
     default_spacing: Optional[ParagraphSpacing] = None
 
@@ -166,15 +177,17 @@ class DocumentDefaults:
 @dataclass
 class Theme:
     """Motyw kolorystyczny i czcionek."""
-    color_scheme: Dict[str, str] = field(default_factory=dict)    # accent1, accent2, ... -> hex
-    fonts: Dict[str, str] = field(default_factory=dict)           # majorFont, minorFont -> name
+
+    color_scheme: Dict[str, str] = field(default_factory=dict)  # accent1, accent2, ... -> hex
+    fonts: Dict[str, str] = field(default_factory=dict)  # majorFont, minorFont -> name
 
 
 @dataclass
 class HeaderFooter:
     """Nagłówek lub stopka."""
-    type: str                                                   # 'header', 'footer'
-    section_type: str                                           # 'default', 'even', 'first'
+
+    type: str  # 'header', 'footer'
+    section_type: str  # 'default', 'even', 'first'
     content: str = ""
     style_refs: List[str] = field(default_factory=list)
     contains_page_number: bool = False
@@ -183,7 +196,8 @@ class HeaderFooter:
 @dataclass
 class SectionBreak:
     """Podział sekcji."""
-    break_type: str = "continuous"                              # 'continuous', 'nextPage', 'evenPage', 'oddPage'
+
+    break_type: str = "continuous"  # 'continuous', 'nextPage', 'evenPage', 'oddPage'
     columns: int = 1
     margins: Optional[Dict[str, float]] = None
 
@@ -191,6 +205,7 @@ class SectionBreak:
 @dataclass
 class TemplateProfile:
     """Profil template'u - wynik analizy Document A."""
+
     template_type: TemplateType = TemplateType.EXAMPLE_DOCUMENT
     paragraph_styles: Dict[str, ParagraphStyle] = field(default_factory=dict)
     character_styles: Dict[str, CharacterStyle] = field(default_factory=dict)
@@ -208,9 +223,10 @@ class TemplateProfile:
 @dataclass
 class ParagraphContent:
     """Pojedynczy paragraf z dokumentu treści."""
+
     text: str
     style_name: Optional[str] = None
-    runs: List[Dict[str, Any]] = field(default_factory=list)    # [{text, bold, italic, color}]
+    runs: List[Dict[str, Any]] = field(default_factory=list)  # [{text, bold, italic, color}]
     is_list_item: bool = False
     list_level: int = 0
     list_num_id: Optional[int] = None
@@ -227,6 +243,7 @@ class ParagraphContent:
 @dataclass
 class TableContent:
     """Tabela z dokumentu treści."""
+
     rows: List[List[str]] = field(default_factory=list)
     style_name: Optional[str] = None
     num_rows: int = 0
@@ -236,6 +253,7 @@ class TableContent:
 @dataclass
 class ContentProfile:
     """Profil dokumentu treści - wynik analizy Document B."""
+
     paragraphs: List[ParagraphContent] = field(default_factory=list)
     tables: List[TableContent] = field(default_factory=list)
     images: List[Dict[str, Any]] = field(default_factory=list)
@@ -250,27 +268,30 @@ class ContentProfile:
 @dataclass
 class StyleMatch:
     """Wynik dopasowania stylu."""
+
     source_style_id: str
     target_style_id: str
-    confidence: float                                              # 0.0 - 1.0
+    confidence: float  # 0.0 - 1.0
     reason: str
-    matcher_type: str = "unknown"                                  # 'exact', 'fuzzy', 'semantic', 'llm', 'heuristic'
+    matcher_type: str = "unknown"  # 'exact', 'fuzzy', 'semantic', 'llm', 'heuristic'
 
 
 @dataclass
 class MatchLog:
     """Log pojedynczego dopasowania stylu."""
-    pass_name: str                                                 # 'exact', 'fuzzy', 'semantic', 'llm', 'heuristic'
+
+    pass_name: str  # 'exact', 'fuzzy', 'semantic', 'llm', 'heuristic'
     source_style: str
     target_style: str
     confidence: float
     reason: str
-    paragraph_preview: str = ""                                    # Pierwsze 60 znaków paragrafu
+    paragraph_preview: str = ""  # Pierwsze 60 znaków paragrafu
 
 
 @dataclass
 class ProcessingLog:
     """Szczegółowe logi przetwarzania dokumentu."""
+
     template_styles_found: int = 0
     content_paragraphs: int = 0
     llm_available: bool = False
@@ -284,6 +305,7 @@ class ProcessingLog:
 @dataclass
 class ProcessingResult:
     """Wynik przetwarzania."""
+
     output_path: Optional[str] = None
     output_bytes: Optional[bytes] = None
     matched_styles: List[StyleMatch] = field(default_factory=list)
