@@ -309,21 +309,24 @@
             ? (data.llm_used ? '✅ Used' : '⏭️ Skipped')
             : '❌ Not configured';
 
+        const matches = data.matches || [];
+        const unmatched = data.unmatched || [];
+
         debugSummary.innerHTML = `
             <div class="debug-stat">
-                <div class="debug-stat-value">${data.template_styles_count}</div>
+                <div class="debug-stat-value">${data.template_styles_found}</div>
                 <div class="debug-stat-label">Template Styles</div>
             </div>
             <div class="debug-stat">
-                <div class="debug-stat-value">${data.content_paragraphs_count}</div>
+                <div class="debug-stat-value">${data.content_paragraphs}</div>
                 <div class="debug-stat-label">Content Paragraphs</div>
             </div>
             <div class="debug-stat">
-                <div class="debug-stat-value">${data.matches.length}</div>
+                <div class="debug-stat-value">${data.total_matches}</div>
                 <div class="debug-stat-label">Matches</div>
             </div>
             <div class="debug-stat">
-                <div class="debug-stat-value">${data.unmatched_styles.length}</div>
+                <div class="debug-stat-value">${unmatched.length}</div>
                 <div class="debug-stat-label">Unmatched</div>
             </div>
             <div class="debug-stat">
@@ -334,25 +337,25 @@
     }
 
     function renderDebugMatches(matches) {
-        if (!matches.length) {
+        if (!matches || !matches.length) {
             debugMatches.innerHTML = '<p style="padding:20px;text-align:center;color:var(--gray-400)">No matches found</p>';
             return;
         }
 
         debugMatches.innerHTML = matches.map(m => `
             <div class="debug-match-item">
-                <span class="debug-match-pass ${m.pass_name}">${m.pass_name}</span>
+                <span class="debug-match-pass ${m.pass}">${m.pass}</span>
                 <span class="debug-match-style" title="${escapeHtml(m.source_style)}">${escapeHtml(m.source_style)}</span>
                 <span class="debug-match-arrow">→</span>
                 <span class="debug-match-style" title="${escapeHtml(m.target_style)}">${escapeHtml(m.target_style)}</span>
                 <span class="debug-match-confidence ${getConfidenceClass(m.confidence)}">${Math.round(m.confidence * 100)}%</span>
-                <span class="debug-match-preview">${escapeHtml(m.preview || '')}</span>
+                <span class="debug-match-preview">${escapeHtml(m.paragraph_preview || '')}</span>
             </div>
         `).join('');
     }
 
     function renderDebugUnmatched(unmatched) {
-        if (!unmatched.length) {
+        if (!unmatched || !unmatched.length) {
             hide(debugUnmatched);
             return;
         }
@@ -400,7 +403,7 @@
 
             renderDebugSummary(data);
             renderDebugMatches(data.matches);
-            renderDebugUnmatched(data.unmatched_styles);
+            renderDebugUnmatched(data.unmatched);
 
             show(debugSection);
             hide(progressSection);
