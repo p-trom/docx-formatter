@@ -2,17 +2,17 @@
 DOCX Formatter - Core engine for intelligent document formatting.
 """
 
-from .types import *  # noqa: F403
+from .assembler import DocumentAssembler
 from .extractor import DOCXExtractor
 from .matcher import StyleMatchingEngine
-from .assembler import DocumentAssembler
 from .pipeline import FormatPipeline
+from .types import *  # noqa: F403
 
 __version__ = "0.1.0"
 
 __all__ = [
     "FormatPipeline",
-    "DOCXExtractor", 
+    "DOCXExtractor",
     "StyleMatchingEngine",
     "DocumentAssembler",
 ]

@@ -1,6 +1,6 @@
 # DOCX Formatter
 
-**100% offline** intelligent DOCX document formatting. No AI, no API keys, no external dependencies — just pure Python document engineering.
+**100% offline** intelligent DOCX document formatting. Pure Python document engineering with optional AI-enhanced style matching.
 
 **Live API:** `https://docx-formatter-axh8.onrender.com`  
 **Live Web App:** `https://docx-formatter.vercel.app`
@@ -78,6 +78,7 @@ Content DOCX ───┘
 - Exact style ID match (e.g. `Heading 1` → `Heading 1`)
 - Fuzzy name matching (Levenshtein similarity ≥ 0.6)
 - Semantic role matching (title, heading, body, list, quote, caption)
+- **LLM-based matching** (optional — via OpenRouter, for ambiguous styles)
 - Content heuristic matching (font size, bold, indentation)
 
 **Stage 3 — Assemble** (`DocumentAssembler`)
@@ -95,6 +96,7 @@ Content DOCX ───┘
 |-------|-----------|
 | Backend API | FastAPI + uvicorn |
 | DOCX Engine | python-docx + lxml (OOXML) |
+| AI Matching | OpenRouter API (optional, via httpx) |
 | Frontend | Vanilla HTML/CSS/JS (static) |
 | Backend Hosting | Render (free tier) |
 | Frontend Hosting | Vercel (static) |
@@ -102,7 +104,7 @@ Content DOCX ───┘
 | Linting | ruff |
 | CI/CD | GitHub Actions |
 
-**No AI. No LLM calls. No API keys required.**
+**Optional AI:** Set `OPENROUTER_API_KEY` to enable LLM-enhanced style matching for ambiguous documents. Zero impact on performance when not set — app works fully offline.
 
 ---
 
@@ -114,7 +116,8 @@ docx-formatter/
 │   ├── core/
 │   │   ├── pipeline.py      # Main entry point: FormatPipeline
 │   │   ├── extractor.py     # DOCX → TemplateProfile / ContentProfile
-│   │   ├── matcher.py       # StyleMatchingEngine (4-pass cascade)
+│   │   ├── matcher.py       # StyleMatchingEngine (5-pass cascade, optional LLM)
+│   │   ├── llm_matcher.py   # OpenRouter-powered style matching (optional)
 │   │   ├── assembler.py     # DocumentAssembler (section-aware replacement)
 │   │   └── types.py         # Dataclasses: 18 semantic roles, style models
 │   ├── api/
@@ -172,7 +175,7 @@ uvicorn docx_formatter.api.main:app --reload
 pytest -q
 ```
 
-Current status: **21 tests passing** (4 API integration + 17 core engine).
+Current status: **30 tests passing** (4 API integration + 17 core engine + 9 LLM matcher).
 
 ### Docker
 
@@ -211,6 +214,7 @@ Environment variables (via `.env` or platform dashboard):
 | `PORT` | `8000` | Server port |
 | `MAX_FILE_SIZE_MB` | `16` | Max upload size |
 | `CORS_ORIGINS` | `["*"]` | Allowed frontend origins |
+| `OPENROUTER_API_KEY` | `None` | Optional: enable LLM-enhanced style matching |
 
 ---
 
@@ -219,11 +223,12 @@ Environment variables (via `.env` or platform dashboard):
 ### Current (v0.1.0) ✅
 - [x] Upload 2 DOCX files via API and web UI
 - [x] Extract styles from template (paragraph + document defaults)
-- [x] 4-pass style matching (exact → fuzzy → semantic → heuristic)
+- [x] 5-pass style matching (exact → fuzzy → semantic → **LLM** → heuristic)
+- [x] Optional AI-enhanced matching via OpenRouter (zero config = offline)
 - [x] Section-aware assembly (preserve headers/footers/background)
 - [x] Download formatted DOCX
 - [x] Health endpoint
-- [x] 21 tests
+- [x] 30 tests
 
 ### v0.2 (planned)
 - [ ] Table style matching and formatting

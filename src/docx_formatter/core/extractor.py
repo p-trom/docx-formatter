@@ -2,10 +2,10 @@
 DOCX Extractor - parses both template and content documents into profiles.
 """
 
-import zipfile
-import xml.etree.ElementTree as ET
-from typing import Optional, Dict, List, Any
 import logging
+import xml.etree.ElementTree as ET
+import zipfile
+from typing import Any, Dict, List, Optional
 
 # Try importing python-docx
 try:
@@ -15,8 +15,18 @@ except ImportError:
     DOCX_AVAILABLE = False
 
 from .types import (
-    FontStyle, ParagraphSpacing, ParagraphStyle, DocumentDefaults, TemplateProfile, ContentProfile, ParagraphContent, TableContent,
-    SemanticRole, TemplateType, ParagraphAlignment, ParagraphIndentation
+    ContentProfile,
+    DocumentDefaults,
+    FontStyle,
+    ParagraphAlignment,
+    ParagraphContent,
+    ParagraphIndentation,
+    ParagraphSpacing,
+    ParagraphStyle,
+    SemanticRole,
+    TableContent,
+    TemplateProfile,
+    TemplateType,
 )
 
 logger = logging.getLogger(__name__)
@@ -70,11 +80,11 @@ def _parse_font_size(sz_elem: Optional[ET.Element]) -> Optional[float]:
 
 class DOCXExtractor:
     """Parses DOCX files into structured profiles."""
-    
+
     def __init__(self):
         if not DOCX_AVAILABLE:
             raise ImportError("python-docx is required. Install with: pip install python-docx")
-    
+
     def extract_template_profile(self, docx_path: str) -> TemplateProfile:
         """
         Extract template profile from Document A (template).
@@ -83,22 +93,22 @@ class DOCXExtractor:
         """
         doc = Document(docx_path)
         profile = TemplateProfile()
-        
+
         # Extract paragraph styles
         profile.paragraph_styles = self._extract_paragraph_styles(doc)
         logger.info(f"Extracted {len(profile.paragraph_styles)} paragraph styles")
-        
+
         # Extract document defaults (margins, page size)
         profile.document_defaults = self._extract_document_defaults(doc)
-        
+
         # Try to read styles.xml directly for full style definitions
         self._extract_styles_xml(docx_path, profile)
-        
+
         # Detect template type
         profile.template_type = self._detect_template_type(doc, profile)
-        
+
         return profile
-    
+
     def extract_content_profile(self, docx_path: str) -> ContentProfile:
         """
         Extract content profile from Document B (raw content).
@@ -107,23 +117,23 @@ class DOCXExtractor:
         """
         doc = Document(docx_path)
         profile = ContentProfile()
-        
+
         # Extract paragraphs
         for i, para in enumerate(doc.paragraphs):
             para_content = self._extract_paragraph(para, para_index=i, total_paras=len(doc.paragraphs))
             if para_content.text.strip():
                 profile.paragraphs.append(para_content)
                 profile.word_count += len(para_content.text.split())
-        
+
         # Extract tables
         for table in doc.tables:
             table_content = self._extract_table(table)
             if table_content.num_rows > 0:
                 profile.tables.append(table_content)
-        
+
         # Build structure tree
         profile.structure_tree = self._build_structure_tree(profile.paragraphs)
-        
+
         # Guess document title from first heading or paragraph
         for para in profile.paragraphs:
             if para.estimated_role in (SemanticRole.TITLE, SemanticRole.HEADING_1):
@@ -131,10 +141,10 @@ class DOCXExtractor:
                 break
         if not profile.title and profile.paragraphs:
             profile.title = profile.paragraphs[0].text[:200]
-        
+
         logger.info(f"Extracted {len(profile.paragraphs)} paragraphs, {len(profile.tables)} tables")
         return profile
-    
+
     def _extract_paragraph_styles(self, doc) -> Dict[str, ParagraphStyle]:
         """Extract all paragraph styles from document."""
         styles = {}
@@ -145,13 +155,13 @@ class DOCXExtractor:
                 style_type = style.type
             except Exception:
                 continue
-            
+
             if style_type != 1:  # WD_STYLE_TYPE.PARAGRAPH = 1
                 continue
-            
+
             style_id = style.style_id
             font = FontStyle()
-            
+
             # Font properties
             try:
                 if style.font.name:
@@ -164,12 +174,12 @@ class DOCXExtractor:
                     font.color = str(style.font.color.rgb)
             except Exception as e:
                 logger.debug(f"Error reading font for style {style_id}: {e}")
-            
+
             # Paragraph format
             alignment = ParagraphAlignment()
             spacing = ParagraphSpacing()
             indentation = ParagraphIndentation()
-            
+
             try:
                 pf = style.paragraph_format
                 if pf.alignment is not None:
@@ -188,7 +198,7 @@ class DOCXExtractor:
                     indentation.first_line_inches = pf.first_line_indent.inches
             except Exception as e:
                 logger.debug(f"Error reading paragraph format for style {style_id}: {e}")
-            
+
             ps = ParagraphStyle(
                 style_id=style_id,
                 name=style.name,
@@ -202,18 +212,18 @@ class DOCXExtractor:
             # Auto-detect semantic role from style name
             ps.semantic_role = self._detect_role_from_name(style_id, style.name)
             styles[style_id] = ps
-            
+
         return styles
-    
+
     def _detect_role_from_name(self, style_id: str, style_name: str) -> Optional[SemanticRole]:
         """Infer semantic role from style name/id."""
         s = (style_id or '').lower()
         n = (style_name or '').lower()
-        
+
         # Title
         if 'title' in s or 'title' in n or 'naglowek' in n:
             return SemanticRole.TITLE
-        
+
         # Heading levels (only 1-4 available)
         for level in [1, 2, 3, 4]:
             if f'heading {level}' in n or f'heading{level}' in n or f'heading{level}' in s:
@@ -223,23 +233,23 @@ class DOCXExtractor:
             if f'naglowek {level}' in n or f'naglowek{level}' in n:
                 return [SemanticRole.HEADING_1, SemanticRole.HEADING_2,
                         SemanticRole.HEADING_3, SemanticRole.HEADING_4][level-1]
-        
+
         # General heading
         if 'heading' in s or 'heading' in n or 'naglowek' in n:
             return SemanticRole.HEADING_1
-        
+
         # Subtitle
         if 'subtitle' in s or 'subtitle' in n or 'podtytul' in n:
             return SemanticRole.SUBTITLE
-        
+
         # Body
         if 'body' in s or 'body' in n or 'tresc' in n or 'tekst' in n:
             return SemanticRole.BODY_TEXT
-        
+
         # Quote
         if 'quote' in s or 'quote' in n or 'cytat' in n:
             return SemanticRole.QUOTE
-        
+
         # List
         if 'bullet' in s or 'bullet' in n or 'punktor' in n:
             return SemanticRole.LIST_BULLET
@@ -247,13 +257,13 @@ class DOCXExtractor:
             return SemanticRole.LIST_NUMBER
         if 'list' in s or 'lista' in n:
             return SemanticRole.LIST_BULLET
-        
+
         # Caption
         if 'caption' in s or 'caption' in n or 'podpis' in n:
             return SemanticRole.CAPTION
-        
+
         return None
-    
+
     def _extract_document_defaults(self, doc) -> DocumentDefaults:
         """Extract document-level defaults."""
         defaults = DocumentDefaults()
@@ -271,7 +281,7 @@ class DOCXExtractor:
         except Exception as e:
             logger.warning(f"Error extracting document defaults: {e}")
         return defaults
-    
+
     def _extract_styles_xml(self, docx_path: str, profile: TemplateProfile) -> None:
         """
         Read styles.xml directly for full style definitions including outline levels.
@@ -281,35 +291,35 @@ class DOCXExtractor:
             with zipfile.ZipFile(docx_path, 'r') as zf:
                 if 'word/styles.xml' not in zf.namelist():
                     return
-                
+
                 styles_xml = zf.read('word/styles.xml')
                 root = ET.fromstring(styles_xml)
                 ns = NAMESPACES['w']
-                
+
                 for style_elem in root.findall(f'.//{{{ns}}}style'):
                     style_id = style_elem.get(f'{{{ns}}}styleId')
                     style_type = style_elem.get(f'{{{ns}}}type')
-                    
+
                     if style_type != 'paragraph':
                         continue
-                    
+
                     # Find or create style
                     if style_id in profile.paragraph_styles:
                         ps = profile.paragraph_styles[style_id]
                     else:
                         ps = ParagraphStyle(style_id=style_id, name=style_id)
                         profile.paragraph_styles[style_id] = ps
-                    
+
                     # Extract name
                     name_elem = style_elem.find(f'.//{{{ns}}}name')
                     if name_elem is not None:
                         ps.name = name_elem.get(f'{{{ns}}}val') or ps.name
-                    
+
                     # Extract basedOn
                     based_elem = style_elem.find(f'{{{ns}}}basedOn')
                     if based_elem is not None:
                         ps.based_on = based_elem.get(f'{{{ns}}}val')
-                    
+
                     # Outline level
                     outline_elem = style_elem.find(f'.//{{{ns}}}outlineLvl')
                     if outline_elem is not None:
@@ -326,7 +336,7 @@ class DOCXExtractor:
                                 }
                                 ps.semantic_role = outline_role_map.get(ps.outline_level)
                                 ps.role_confidence = 0.9
-                    
+
                     # Extract font properties from rPr if not already set
                     rpr = style_elem.find(f'.//{{{ns}}}rPr')
                     if rpr is not None:
@@ -340,7 +350,7 @@ class DOCXExtractor:
                             rfonts = rpr.find(f'{{{ns}}}rFonts')
                             if rfonts is not None:
                                 ps.font.name = rfonts.get(f'{{{ns}}}ascii')
-                    
+
                     # Paragraph properties
                     ppr = style_elem.find(f'{{{ns}}}pPr')
                     if ppr is not None:
@@ -361,19 +371,19 @@ class DOCXExtractor:
                                     ps.spacing.line_spacing = line_val / 240.0
                                 else:
                                     ps.spacing.line_spacing = line_val / 20.0
-                        
+
                         # Alignment
                         jc = ppr.find(f'{{{ns}}}jc')
                         if jc is not None:
                             ps.alignment.alignment = jc.get(f'{{{ns}}}val')
-        
+
         except Exception as e:
             logger.warning(f"Error reading styles.xml: {e}")
-    
+
     def _extract_paragraph(self, para, para_index: int = 0, total_paras: int = 1) -> ParagraphContent:
         """Extract paragraph content and metadata."""
         text = para.text or ''
-        
+
         # Style name
         style_name = None
         try:
@@ -381,19 +391,19 @@ class DOCXExtractor:
                 style_name = para.style.style_id
         except Exception:
             pass
-        
+
         # Runs with formatting
         runs = []
         has_bold = False
         has_italic = False
         has_underline = False
         max_font_size = None
-        
+
         for run in para.runs:
             run_text = run.text or ''
             if not run_text:
                 continue
-            
+
             run_info = {'text': run_text}
             try:
                 if run.bold:
@@ -414,9 +424,9 @@ class DOCXExtractor:
                     run_info['color'] = str(run.font.color.rgb)
             except Exception:
                 pass
-            
+
             runs.append(run_info)
-        
+
         # Check for list formatting
         is_list = False
         list_level = 0
@@ -428,13 +438,13 @@ class DOCXExtractor:
         except Exception:
             pass
             left_indent = None
-        
+
         # Estimated semantic role from content
         estimated_role = self._estimate_role(
             text, has_bold, max_font_size, style_name,
             is_list=is_list, para_index=para_index, total_paras=total_paras
         )
-        
+
         return ParagraphContent(
             text=text,
             style_name=style_name,
@@ -448,7 +458,7 @@ class DOCXExtractor:
             max_font_size=max_font_size,
             estimated_role=estimated_role,
         )
-    
+
     def _estimate_role(self, text: str, has_bold: bool, max_font_size: Optional[float],
                        style_name: Optional[str], is_list: bool = False,
                        para_index: int = 0, total_paras: int = 1) -> Optional[SemanticRole]:
@@ -456,7 +466,7 @@ class DOCXExtractor:
         text = text.strip()
         if not text:
             return None
-        
+
         # Check style name hints
         if style_name:
             s = style_name.lower()
@@ -477,43 +487,43 @@ class DOCXExtractor:
             for key, role in role_map.items():
                 if key in s:
                     return role
-        
+
         # Heuristic based on formatting (font size)
         if max_font_size and max_font_size >= 20:
             if has_bold:
                 return SemanticRole.TITLE
-        
+
         if max_font_size and max_font_size >= 16:
             if has_bold:
                 return SemanticRole.HEADING_1
-        
+
         # Text-based heuristics (when font size not available)
         text_upper = text.upper()
         is_all_caps = text == text_upper and any(c.isalpha() for c in text)
         word_count = len(text.split())
         char_count = len(text)
-        
+
         # Title: very short, first paragraph, all caps or bold
         if para_index == 0 and char_count < 80:
             if is_all_caps or has_bold:
                 return SemanticRole.TITLE
-        
+
         # Heading 1: short, all caps, or bold short text
         if char_count < 60 and (is_all_caps or (has_bold and word_count <= 5)):
             return SemanticRole.HEADING_1
-        
+
         # Heading 2: short bold text
         if has_bold and char_count < 80 and word_count <= 6:
             return SemanticRole.HEADING_2
-        
+
         # List items
         if is_list or text.startswith(('●', '•', '○', '▪', '-', '►', '→')):
             return SemanticRole.LIST_BULLET
-        
+
         # Numbered list
         if text[:3].strip().endswith('.') and text[:2].strip() and text[:2].strip()[0].isdigit():
             return SemanticRole.LIST_NUMBER
-        
+
         # Date patterns
         import re
         date_patterns = [
@@ -523,14 +533,14 @@ class DOCXExtractor:
         for pattern in date_patterns:
             if re.search(pattern, text):
                 return SemanticRole.DATE_FIELD
-        
+
         # Amount patterns
         amount_pattern = r'\d{1,3}(?:\s?\d{3})*(?:[.,]\d{2})?\s*(?:PLN|USD|EUR|GBP|\$|€|£)'
         if re.search(amount_pattern, text):
             return SemanticRole.AMOUNT_FIELD
-        
+
         return SemanticRole.BODY_TEXT
-    
+
     def _extract_table(self, table) -> TableContent:
         """Extract table content."""
         rows = []
@@ -540,29 +550,29 @@ class DOCXExtractor:
                 cell_text = cell.text.strip()
                 row_data.append(cell_text)
             rows.append(row_data)
-        
+
         style_name = None
         try:
             if table.style:
                 style_name = table.style.style_id
         except Exception:
             pass
-        
+
         return TableContent(
             rows=rows,
             style_name=style_name,
             num_rows=len(rows),
             num_cols=len(rows[0]) if rows else 0,
         )
-    
+
     def _build_structure_tree(self, paragraphs: List[ParagraphContent]) -> Dict[str, Any]:
         """Build hierarchical structure tree from paragraphs."""
         tree = {'type': 'document', 'children': []}
         current_section = tree
-        
+
         for para in paragraphs:
             role = para.estimated_role or SemanticRole.BODY_TEXT
-            
+
             if role in (SemanticRole.TITLE, SemanticRole.HEADING_1):
                 section = {
                     'type': 'section',
@@ -587,26 +597,26 @@ class DOCXExtractor:
                     'text': para.text[:100],
                     'role': role.value,
                 })
-        
+
         return tree
-    
+
     def _detect_template_type(self, doc, profile: TemplateProfile) -> TemplateType:
         """Detect what kind of template this is."""
         total_paragraphs = len(doc.paragraphs)
         text_paragraphs = sum(1 for p in doc.paragraphs if p.text.strip())
-        
+
         # If mostly empty or only "Lorem ipsum" content -> style definitions
         if text_paragraphs <= 3:
             return TemplateType.STYLE_DEFINITIONS
-        
+
         # Check if content looks like instructions
         instruction_keywords = ['format', 'style', 'template', 'document', 'heading', 'font']
         full_text = ' '.join(p.text.lower() for p in doc.paragraphs)
         instruction_score = sum(1 for kw in instruction_keywords if kw in full_text)
-        
+
         if instruction_score >= 5:
             return TemplateType.TEXT_INSTRUCTIONS
-        
+
         return TemplateType.EXAMPLE_DOCUMENT
 
 

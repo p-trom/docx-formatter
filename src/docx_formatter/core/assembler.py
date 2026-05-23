@@ -12,18 +12,22 @@ Strategy when template_docx_path is provided:
 """
 
 import logging
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 
 from docx import Document
-from docx.shared import Pt, Inches, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from docx.shared import Inches, Pt, RGBColor
 
 from .types import (
-    TemplateProfile, ContentProfile, ParagraphContent,
-    ParagraphStyle, StyleMatch, ProcessingResult,
-    SemanticRole
+    ContentProfile,
+    ParagraphContent,
+    ParagraphStyle,
+    ProcessingResult,
+    SemanticRole,
+    StyleMatch,
+    TemplateProfile,
 )
 
 logger = logging.getLogger(__name__)

@@ -1,6 +1,7 @@
 """Application settings."""
 
 from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,6 +15,7 @@ class Settings(BaseSettings):
     temp_dir: Path = Path("/tmp/docx_formatter")
     allowed_extensions: set[str] = {".docx"}
     cors_origins: list[str] = ["*"]
+    openrouter_api_key: str | None = None
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

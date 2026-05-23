@@ -4,7 +4,7 @@ Core data models for DOCX processing.
 
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
 
 
 class TemplateType(Enum):
@@ -170,7 +170,7 @@ class Theme:
     fonts: Dict[str, str] = field(default_factory=dict)           # majorFont, minorFont -> name
 
 
-@dataclass 
+@dataclass
 class HeaderFooter:
     """Nagłówek lub stopka."""
     type: str                                                   # 'header', 'footer'
