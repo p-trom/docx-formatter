@@ -228,7 +228,7 @@ Environment variables (via `.env` or platform dashboard):
 - [ ] Table style matching and formatting
 - [ ] Image preservation from content document
 - [ ] Batch processing (multiple content files)
-- [ ] pyproject.toml for proper packaging
+- [x] ~~pyproject.toml for proper packaging~~ ✅ Done
 
 ### v0.3 (planned)
 - [ ] Template marketplace (pre-built templates)
