@@ -78,3 +78,42 @@ def test_format_upload_custom_filename(client):
 
     assert response.status_code == 200
     assert "my_offer.docx" in response.headers["content-disposition"]
+
+
+def test_format_upload_debug(client):
+    """Test debug endpoint returns matching logs."""
+    fixtures_dir = __file__.replace("test_api.py", "fixtures/")
+
+    with open(f"{fixtures_dir}template_offer.docx", "rb") as t, open(
+        f"{fixtures_dir}content_offer.docx", "rb"
+    ) as c:
+        response = client.post(
+            "/api/v1/format/template-upload/debug",
+            files={
+                "template": ("template_offer.docx", t, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+                "content": ("content_offer.docx", c, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["success"] is True
+    assert data["template_styles_found"] > 0
+    assert data["content_paragraphs"] > 0
+    assert "total_matches" in data
+    assert isinstance(data["matches"], list)
+    assert "llm_available" in data
+    assert "llm_used" in data
+    assert "unmatched" in data
+
+
+def test_format_upload_debug_invalid_file(client):
+    """Test debug endpoint with invalid files."""
+    response = client.post(
+        "/api/v1/format/template-upload/debug",
+        files={
+            "template": ("bad.txt", b"not docx", "text/plain"),
+            "content": ("content.txt", b"not docx", "text/plain"),
+        },
+    )
+    assert response.status_code == 422

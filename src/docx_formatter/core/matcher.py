@@ -17,8 +17,10 @@ from typing import Dict, List, Optional
 from .llm_matcher import LLMStyleMatcher
 from .types import (
     ContentProfile,
+    MatchLog,
     ParagraphContent,
     ParagraphStyle,
+    ProcessingLog,
     SemanticRole,
     StyleMatch,
     TemplateProfile,
@@ -42,12 +44,19 @@ class StyleMatchingEngine:
     def __init__(self, min_confidence: float = 0.5, use_llm: bool = True):
         self.min_confidence = min_confidence
         self.llm_matcher = LLMStyleMatcher() if use_llm else None
+        self.last_log: ProcessingLog = ProcessingLog()
 
     def match_all(self, template: TemplateProfile, content: ContentProfile) -> List[StyleMatch]:
         """
         Match all content paragraphs to template styles.
         Returns list of unique style mappings.
+        Populates self.last_log with detailed matching logs.
         """
+        self.last_log = ProcessingLog(
+            template_styles_found=len(template.paragraph_styles),
+            content_paragraphs=len(content.paragraphs),
+            llm_available=self.llm_matcher is not None and self.llm_matcher.is_available(),
+        )
         matches = []
         matched_source = set()
 
@@ -68,6 +77,14 @@ class StyleMatchingEngine:
                 if para.style_name not in matched_source:
                     matches.append(match)
                     matched_source.add(para.style_name)
+                    self.last_log.match_logs.append(MatchLog(
+                        pass_name="exact",
+                        source_style=para.style_name,
+                        target_style=para.style_name,
+                        confidence=1.0,
+                        reason="Exact style ID match",
+                        paragraph_preview=para.text[:60],
+                    ))
 
         # Pass 2: Fuzzy name matching for unmatched styles
         for para in content.paragraphs:
@@ -82,6 +99,14 @@ class StyleMatchingEngine:
             if best_match and best_match.confidence >= self.min_confidence:
                 matches.append(best_match)
                 matched_source.add(para.style_name)
+                self.last_log.match_logs.append(MatchLog(
+                    pass_name="fuzzy",
+                    source_style=best_match.source_style_id,
+                    target_style=best_match.target_style_id,
+                    confidence=best_match.confidence,
+                    reason=best_match.reason,
+                    paragraph_preview=para.text[:60],
+                ))
 
         # Pass 3: Semantic role matching for ALL paragraphs (including Normal-styled)
         for para in content.paragraphs:
@@ -101,6 +126,14 @@ class StyleMatchingEngine:
                 if source_key not in matched_source:
                     matches.append(match)
                     matched_source.add(source_key)
+                    self.last_log.match_logs.append(MatchLog(
+                        pass_name="semantic",
+                        source_style=source_key,
+                        target_style=best_match.target_style_id,
+                        confidence=best_match.confidence,
+                        reason=best_match.reason,
+                        paragraph_preview=para.text[:60],
+                    ))
 
         # Pass 4: LLM-based matching for anything still unmatched (if available)
         if self.llm_matcher and self.llm_matcher.is_available():
@@ -110,11 +143,20 @@ class StyleMatchingEngine:
                 or (not p.style_name and p.estimated_role == SemanticRole.UNKNOWN)
             ]
             if unmatched_for_llm:
+                self.last_log.llm_used = True
                 llm_matches = self.llm_matcher.match(template, unmatched_for_llm)
                 for llm_match in llm_matches:
                     if llm_match.source_style_id not in matched_source:
                         matches.append(llm_match)
                         matched_source.add(llm_match.source_style_id)
+                        self.last_log.match_logs.append(MatchLog(
+                            pass_name="llm",
+                            source_style=llm_match.source_style_id,
+                            target_style=llm_match.target_style_id,
+                            confidence=llm_match.confidence,
+                            reason=llm_match.reason,
+                            paragraph_preview=unmatched_for_llm[0].text[:60] if unmatched_for_llm else "",
+                        ))
 
         # Pass 5: Content heuristic for anything still unmatched
         for para in content.paragraphs:
@@ -133,6 +175,14 @@ class StyleMatchingEngine:
                         matcher_type=best_match.matcher_type,
                     ))
                     matched_source.add(source_key)
+                    self.last_log.match_logs.append(MatchLog(
+                        pass_name="heuristic",
+                        source_style=source_key,
+                        target_style=best_match.target_style_id,
+                        confidence=best_match.confidence,
+                        reason=best_match.reason,
+                        paragraph_preview=para.text[:60],
+                    ))
 
         # Build final style mapping with deduplication
         final_map = {}
@@ -141,6 +191,12 @@ class StyleMatchingEngine:
                 final_map[match.source_style_id] = match
             elif match.confidence > final_map[match.source_style_id].confidence:
                 final_map[match.source_style_id] = match
+
+        # Collect unmatched styles
+        for para in content.paragraphs:
+            sid = para.style_name or f"__unstyled_{para.text[:20]}__"
+            if sid not in matched_source and sid not in self.last_log.unmatched_after_all_passes:
+                self.last_log.unmatched_after_all_passes.append(sid)
 
         result = list(final_map.values())
         logger.info(f"Matched {len(result)} unique style mappings")

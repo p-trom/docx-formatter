@@ -2,9 +2,9 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class FormatResponse(BaseModel):
@@ -43,3 +43,31 @@ class JobResponse(BaseModel):
     error: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = None
+
+
+class MatchDebugItem(BaseModel):
+    """Single match entry in debug response."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    pass_name: str = Field(..., alias="pass")
+    source_style: str
+    target_style: str
+    confidence: float
+    reason: str
+    paragraph_preview: str
+
+
+class DebugResponse(BaseModel):
+    """Debug response with detailed matching logs."""
+
+    success: bool
+    processing_time_ms: int
+    template_styles_found: int
+    content_paragraphs: int
+    llm_available: bool
+    llm_used: bool
+    total_matches: int
+    matches: list[dict[str, Any]]
+    unmatched: list[str]
+    warnings: list[str]

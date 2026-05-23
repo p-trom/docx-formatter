@@ -79,6 +79,7 @@ class FormatPipeline:
             )
 
             result.processing_time_ms = int((time.time() - start_time) * 1000)
+            result.processing_log = self.matcher.last_log
 
             logger.info(
                 f"Processing complete in {result.processing_time_ms}ms. "

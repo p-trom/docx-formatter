@@ -258,6 +258,30 @@ class StyleMatch:
 
 
 @dataclass
+class MatchLog:
+    """Log pojedynczego dopasowania stylu."""
+    pass_name: str                                                 # 'exact', 'fuzzy', 'semantic', 'llm', 'heuristic'
+    source_style: str
+    target_style: str
+    confidence: float
+    reason: str
+    paragraph_preview: str = ""                                    # Pierwsze 60 znaków paragrafu
+
+
+@dataclass
+class ProcessingLog:
+    """Szczegółowe logi przetwarzania dokumentu."""
+    template_styles_found: int = 0
+    content_paragraphs: int = 0
+    llm_available: bool = False
+    llm_used: bool = False
+    llm_api_error: Optional[str] = None
+    match_logs: List[MatchLog] = field(default_factory=list)
+    unmatched_after_all_passes: List[str] = field(default_factory=list)
+    pipeline_stages: List[Dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass
 class ProcessingResult:
     """Wynik przetwarzania."""
     output_path: Optional[str] = None
@@ -269,6 +293,7 @@ class ProcessingResult:
     success: bool = False
     processing_time_ms: Optional[int] = None
     preview_html: Optional[str] = None
+    processing_log: Optional[ProcessingLog] = None
 
 
 __all__ = [
@@ -291,5 +316,7 @@ __all__ = [
     "TableContent",
     "ContentProfile",
     "StyleMatch",
+    "MatchLog",
+    "ProcessingLog",
     "ProcessingResult",
 ]
